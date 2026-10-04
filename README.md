@@ -8,24 +8,25 @@
 
 Digital investigations usually begin with artifacts that survived collection. SIBERIAN is for the complementary question: given an activity and a collection scope, what should have been observable, and what might explain the artifacts that are missing?
 
-The project is at bootstrap. Its first implementation will compare confirmed absences with surviving artifacts and competing explanations. It will report `ABSTAIN` when the available evidence cannot distinguish selective removal from benign loss or a collection gap.
+The first Python analysis library is now ported. It compares confirmed absences with the other artifacts expected for an action. It reports exact descriptive metrics and a hash of the analysis inputs; it does **not** classify intent or produce a verdict.
 
-```text
-Illustrative report — not output from an implemented analyzer
+```python
+from siberian import AdversarialSilenceDetector, ArtifactStatus
 
-OBSERVED
-  Prefetch             confirmed absent
-  USN Journal          unknown (not collected)
-  DNS cache            present
-
-RESULT
-  Insufficient evidence to distinguish selective removal
-  from retention or collection effects.
-
-VERDICT: ABSTAIN
+analysis = AdversarialSilenceDetector(os_profile="windows")
+analysis.register_primary_action("process_execution")
+analysis.register_observation(
+    "process_execution", "prefetch_entry", ArtifactStatus.CONFIRMED_ABSENT,
+    explanation="Checked in the acquired Prefetch directory",
+)
+analysis.register_observation(
+    "process_execution", "event_4688", ArtifactStatus.PRESENT,
+)
+result = analysis.analyze()
+print(result.selectivity_score, result.known_count, result.audit_hash)
 ```
 
-Absence alone does not establish deletion, tampering, attribution, or intent. The technical design and its known limits are described in the prominent **[Technical README](TECHNICAL_README.md)**.
+Unreported artifacts remain `UNKNOWN`; they are excluded from the metrics. Absence alone does not establish deletion, tampering, attribution, or intent. The technical design, formulas, and limits are described in the prominent **[Technical README](TECHNICAL_README.md)**.
 
 ## What makes the question useful
 
@@ -33,24 +34,22 @@ Absence alone does not establish deletion, tampering, attribution, or intent. Th
 | --- | --- |
 | Lists artifacts that were found | Also models expected artifacts and their observation status |
 | Can treat a missing record as a gap | Separates present, confirmed absent, unknown, and out of scope |
-| May collapse the result to one explanation | Preserves rival explanations and can abstain |
+| May collapse the result to one explanation | Returns descriptive metrics without an intent verdict |
 
-These are design goals, not capabilities claimed for a released implementation.
+The current library implements the observation states and descriptive metrics. It does not yet model rival hypotheses or issue `PASS` / `WARN` / `ABSTAIN` outcomes.
 
 ## Project status and origin
 
 SIBERIAN is based on idea 24 in VIGÍA's catalogue of **40** product ideas: “Detector de silencio adversarial (el borrado selectivo delata).” The source note records the concept and the starting modules: [`vigia/patterns/adversarial_silence.py`](docs/VIGIA_20_IDEAS_2026-08-13.md) and `vigia/tools/temporal_drift.py` in the separate `vigia-repo` project.
 
-The VIGÍA detector is a research starting point, not a validated standalone product. SIBERIAN is intended to become an independent Python project without a VIGÍA runtime dependency.
+The VIGÍA detector is a research starting point, not a validated standalone product. SIBERIAN is an independent Python package without a VIGÍA runtime dependency. The adaptation and source license are recorded in [`NOTICE`](NOTICE).
 
-## Planned first milestone
+## Current package and next work
 
-- Typed evidence manifest with explicit observation and collection states.
-- Deterministic comparison of expected artifacts and confirmed observations.
-- Rival hypotheses, investigation suggestions, and `PASS` / `WARN` / `ABSTAIN` outcomes.
-- Canonical report with provenance and a content hash.
-- Small CLI for user-supplied evidence manifests.
+- `siberian/`: dependency-free analysis library and Windows/Linux seed catalogues.
+- `docs/`: source provenance, technical behavior, and the language decision.
+- Next: validate the artifact expectations, add a versioned manifest format, then evaluate rival hypotheses.
 
-No standalone CLI or production-ready inference is available yet. License and contribution terms are not selected.
+There is no CLI, calibrated model, or validation corpus yet. The descriptive weights are inherited research assumptions, not probabilities. Licensed under Apache-2.0.
 
 > Evidence is not only what remains.

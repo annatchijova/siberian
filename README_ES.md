@@ -8,24 +8,25 @@
 
 Las investigaciones digitales suelen empezar por los artefactos que sobrevivieron a la adquisición. SIBERIAN aborda la pregunta complementaria: dado un hecho y el alcance de la adquisición, ¿qué artefactos deberían haberse podido observar y qué podría explicar los que faltan?
 
-El proyecto está en etapa inicial. La primera implementación comparará ausencias confirmadas con artefactos supervivientes y explicaciones alternativas. Devolverá `ABSTAIN` cuando la evidencia disponible no permita distinguir entre borrado selectivo, pérdida benigna o una brecha de adquisición.
+La primera biblioteca de análisis en Python ya está portada. Compara las ausencias confirmadas con los demás artefactos esperados para una acción. Devuelve métricas descriptivas exactas y un hash de las entradas del análisis; no clasifica intención ni produce un veredicto.
 
-```text
-Informe ilustrativo — no es el resultado de un analizador implementado
+```python
+from siberian import AdversarialSilenceDetector, ArtifactStatus
 
-OBSERVADO
-  Prefetch             ausencia confirmada
-  USN Journal          desconocido (no adquirido)
-  Caché DNS            presente
-
-RESULTADO
-  Evidencia insuficiente para distinguir borrado selectivo
-  de efectos de retención o adquisición.
-
-VEREDICTO: ABSTAIN
+analysis = AdversarialSilenceDetector(os_profile="windows")
+analysis.register_primary_action("process_execution")
+analysis.register_observation(
+    "process_execution", "prefetch_entry", ArtifactStatus.CONFIRMED_ABSENT,
+    explanation="Verificado en el directorio Prefetch adquirido",
+)
+analysis.register_observation(
+    "process_execution", "event_4688", ArtifactStatus.PRESENT,
+)
+result = analysis.analyze()
+print(result.selectivity_score, result.known_count, result.audit_hash)
 ```
 
-La ausencia por sí sola no demuestra borrado, manipulación, atribución ni intención. El diseño técnico y sus límites conocidos están en el **[README técnico](TECHNICAL_README.md)**.
+Los artefactos sin registrar quedan como `UNKNOWN` y no entran en las métricas. La ausencia por sí sola no demuestra borrado, manipulación, atribución ni intención. El diseño técnico, las fórmulas y los límites están en el **[README técnico](TECHNICAL_README.md)**.
 
 ## Qué aporta la pregunta
 
@@ -33,24 +34,22 @@ La ausencia por sí sola no demuestra borrado, manipulación, atribución ni int
 | --- | --- |
 | Enumera los artefactos encontrados | También modela los esperados y su estado de observación |
 | Puede tratar un registro faltante como un vacío | Separa presente, ausencia confirmada, desconocido y fuera de alcance |
-| Puede reducir el resultado a una explicación | Conserva explicaciones rivales y puede abstenerse |
+| Puede reducir el resultado a una explicación | Devuelve métricas descriptivas, sin veredicto de intención |
 
-Son objetivos de diseño; no son capacidades de una versión publicada.
+La biblioteca actual implementa estados de observación y métricas descriptivas. Todavía no modela hipótesis rivales ni emite resultados `PASS` / `WARN` / `ABSTAIN`.
 
 ## Estado y origen
 
 SIBERIAN parte de la idea 24 del catálogo de **40** ideas de productos de VIGÍA: «Detector de silencio adversarial (el borrado selectivo delata)». La nota de origen registra el concepto y los módulos iniciales: [`vigia/patterns/adversarial_silence.py`](docs/VIGIA_20_IDEAS_2026-08-13.md) y `vigia/tools/temporal_drift.py`, en el proyecto independiente `vigia-repo`.
 
-El detector de VIGÍA es un punto de partida de investigación, no un producto independiente validado. SIBERIAN busca convertirse en un proyecto Python autónomo, sin dependencia de ejecución de VIGÍA.
+El detector de VIGÍA es un punto de partida de investigación, no un producto independiente validado. SIBERIAN es un paquete Python autónomo, sin dependencia de ejecución de VIGÍA. La adaptación y la licencia de origen están en [`NOTICE`](NOTICE).
 
-## Primera etapa prevista
+## Paquete actual y próximos pasos
 
-- Manifiesto tipado de evidencia con estados explícitos de observación y adquisición.
-- Comparación determinista entre artefactos esperados y observaciones confirmadas.
-- Hipótesis rivales, sugerencias de investigación y resultados `PASS` / `WARN` / `ABSTAIN`.
-- Informe canónico con procedencia y hash de contenido.
-- CLI pequeña para manifiestos aportados por el usuario.
+- `siberian/`: biblioteca de análisis sin dependencias y catálogos iniciales para Windows/Linux.
+- `docs/`: procedencia, comportamiento técnico y decisión de lenguaje.
+- Próximo: validar las expectativas de artefactos, crear un formato versionado de manifiesto y luego evaluar hipótesis rivales.
 
-Todavía no hay una CLI independiente ni inferencia lista para producción. Aún no se eligieron licencia ni términos de contribución.
+Todavía no hay CLI, modelo calibrado ni corpus de validación. Los pesos descriptivos son supuestos heredados de investigación, no probabilidades. Licencia Apache-2.0.
 
 > La evidencia no es solamente lo que permanece.

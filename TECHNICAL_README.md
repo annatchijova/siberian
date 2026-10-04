@@ -4,88 +4,66 @@
 
 ## Status and scope
 
-This repository is a bootstrap for a proposed deterministic forensic analysis core. There is no implementation, command-line interface, calibrated statistical model, or validation corpus in this repository yet. The illustrative report in the primary README is explicitly not program output.
+This repository contains a first standalone Python library port of VIGÍA's adversarial-silence pattern. It has no command-line interface, calibrated statistical model, or validation corpus. It returns descriptive metrics; it does not issue a forensic verdict.
 
 The seed is VIGÍA idea 24, supported there by `vigia/patterns/adversarial_silence.py` and `vigia/tools/temporal_drift.py`. The source catalogue describes the idea as comparing selective loss of difficult-to-erase artifacts with easier-to-erase artifacts. SIBERIAN treats this as a hypothesis to investigate, not an attribution method.
 
-## Proposed inputs
+## Current API and inputs
 
-The first manifest format should represent at least:
+The library API is in `siberian/adversarial_silence.py`. Callers select an OS profile, register known actions, and attach observations to an `(action, artifact_type)` pair:
 
-- **Activity claim:** the action or event for which secondary artifacts are expected, with provenance and confidence kept separate from the absence analysis.
-- **Artifact expectation:** artifact type, platform and configuration conditions, expected persistence, forensic value, and the source/version of the expectation model.
-- **Observation:** `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, or `OUT_OF_SCOPE`, with acquisition method, time, source, and supporting reference.
-- **Collection context:** time range, sensors and sources actually acquired, known gaps, retention policy, and integrity metadata.
-- **Alternative explanations:** explicit hypotheses such as normal expiry, disabled telemetry, platform behavior, acquisition failure, or selective removal.
+```python
+from siberian import AdversarialSilenceDetector, ArtifactStatus
 
-An artifact is eligible for absence analysis only when the expectation applies and collection could have observed it. `UNKNOWN` and `OUT_OF_SCOPE` must not be converted into absence.
-
-## Proposed analysis path
-
-```text
-manifest + versioned expectation model
-                 │
-                 ▼
-       applicability / coverage gate
-                 │
-                 ▼
- present · confirmed absent · unknown · out of scope
-                 │
-                 ▼
-       selective-loss comparison
-                 │
-                 ▼
-   rival explanations + counterfactuals
-                 │
-                 ▼
-    PASS / WARN / ABSTAIN + provenance
+detector = AdversarialSilenceDetector("windows")
+detector.register_primary_action("process_execution")
+detector.register_observation(
+    "process_execution", "prefetch_entry", ArtifactStatus.CONFIRMED_ABSENT,
+    explanation="Checked in the acquired Prefetch directory",
+)
+result = detector.analyze()
 ```
 
-The result should include the exact observations used, exclusions and reasons, expectation-model version, calculations, rival hypotheses, and the observations that could distinguish them. An LLM must not participate in the consequential decision path. A later narrative renderer, if added, may only describe a finalized result.
+Supported profiles/actions and their expected-artifact tables are embedded in this release. Their applicability to a particular machine, version, configuration, action, or collection period is **not** evaluated. The caller is responsible for establishing those conditions before recording `CONFIRMED_ABSENT`.
 
-## Scoring and decision semantics
+Observations are `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, or `OUT_OF_SCOPE`. Unreported expected artifacts default to `UNKNOWN`. Only `PRESENT` and `CONFIRMED_ABSENT` observations are used in metric denominators; the other two states remain visible in the returned records and are excluded.
 
-No score formula or threshold is adopted yet. VIGÍA's source implementation uses `Fraction` arithmetic and combines weighted silence, selectivity, and erasure difficulty into `fabrication_likelihood`. That name can be read as a calibrated probability even though the implementation does not establish calibration. SIBERIAN must not reuse it as a probability.
+## Current metrics
 
-Before scoring is implemented, the project needs an explicit model for:
+The library returns `silence_score`, `selectivity_score`, and `erasure_sophistication` as exact `Fraction` values, plus counts of expected, known, absent, unknown, and out-of-scope artifacts. Counts are necessary context: a ratio based on one observation is not equivalent to one based on a large sample. The metrics summarize supplied observations and inherited research weights; they are not probability estimates.
 
-1. Applicability of each expected artifact to the operating system, version, configuration, and action.
-2. Probability or defensible interval of survival under the benign hypotheses being compared.
-3. Collection coverage and the chance the acquisition process would have captured the artifact.
-4. Dependence between artifacts (for example, artifacts removed together by one retention action).
-5. How the comparison is calibrated and evaluated against benign loss and known selective-removal cases.
+- **`silence_score`**: sum of `forensic_value` weights for confirmed-absent artifacts divided by the sum of weights for all known in-scope artifacts. It is `None` when there are no known observations.
+- **`selectivity_score`**: `max(hard_absence_rate - easy_absence_rate, 0)`, where “hard” means `erasure_difficulty > 1/2`. It is `None` unless both groups have at least one known observation.
+- **`erasure_sophistication`**: mean `erasure_difficulty` among confirmed-absent artifacts. It is `None` when there are no confirmed absences.
 
-Until the evidence model and thresholds are validated, scores must be labeled as descriptive metrics, not likelihoods, probabilities, or evidence of intent. `ABSTAIN` is required when the hypotheses are not discriminated by the observations or their assumptions are unverified.
+No composite score or threshold is provided. The source field `fabrication_likelihood` was dropped because it was an uncalibrated weighted score whose name implied more than the evidence supported. The output has no `PASS` / `WARN` / `ABSTAIN` decision yet.
 
 ## Source-code observations
 
-The source module `vigia/patterns/adversarial_silence.py` was inspected as the seed. Its records are frozen dataclasses and its calculations use `Fraction`; its audit hash is SHA-256 over a JSON subset containing the two scores and sorted absent artifact names.
+The module is adapted from `vigia/patterns/adversarial_silence.py` in VIGÍA, under Apache-2.0; see [`NOTICE`](NOTICE) and [`LICENSE`](LICENSE). Its expectation catalogues and ordinal weights are carried over as research assumptions.
 
-The current source also has material modeling limits that the standalone design must not inherit silently:
+The standalone port addresses some representation issues from the source:
 
-- Present and absent artifacts are stored in shared sets rather than tied to a specific action, time, or source.
-- Every expected artifact contributes to the denominator. An artifact that was never registered as present or confirmed absent behaves like non-absence in the selectivity calculation, even though its status is unknown.
-- A confirmed absence is applied by artifact type across all registered actions, so context-specific observations cannot be represented faithfully.
-- The result named `fabrication_likelihood` is an uncalibrated weighted score; it must not be presented as a probability.
-- The hash does not include all observations, assumptions, expectation-model provenance, or alternative explanations, so it is not a complete sealed report.
+- Observations are associated with a specific action and artifact type.
+- Unknown and out-of-scope artifacts are excluded from metric denominators rather than counted as present.
+- Unsupported OS profiles, actions, artifact identifiers, and conflicting observations raise errors.
+- The probability-sounding `fabrication_likelihood` field is omitted.
 
-These are findings from reading the implementation, not claims that its tests or production use have validated behavior. The temporal-drift module is a separate VIGÍA subsystem; no coupling to it has been designed or implemented here.
+Important limits remain: the catalogue is not version/configuration-aware; collection scope and acquisition quality are not modeled; dependence between artifacts is ignored; explanations are caller-supplied text; and there is no calibrated inference, rival-hypothesis comparison, CLI, or empirical validation. The SHA-256 digest covers the profile and returned expected-artifact/status/explanation records, including the catalog weights and command hints. It does not attest to the truth or completeness of observations, and is not a sealed chain-of-custody report. The temporal-drift module is a separate VIGÍA subsystem and is not part of this port.
 
 ## Determinism, provenance, and integrity
 
-The intended core is deterministic for an identical canonical manifest, expectation model, and software version. The implementation should avoid floating-point decision arithmetic unless its cross-platform behavior is explicitly bounded and tested. Any content hash must cover the canonical input, model/version identifiers, exclusions, intermediate calculations, and final result. A hash can show that a report has not changed under the stated hashing scheme; it cannot prove that observations are true or complete.
-
-The canonical serialization format, hash domain, schema versioning, and verifier design remain open decisions.
+The current implementation uses `Fraction` for calculations, sorts actions and artifact identifiers before building records, serializes a fixed versioned dictionary using sorted compact JSON, then hashes its UTF-8 bytes with SHA-256. This is a deterministic digest for the current API payload. It is not a canonical manifest or an independent verifier format; schema/version evolution remains open.
 
 ## Threat and trust boundaries
 
-Inputs and artifact descriptions are untrusted. Parsers must validate schema, bound input size and collection counts, reject ambiguous states, and preserve original source references. The analysis process must not execute commands copied from evidence or generated investigation hints. Any suggested command is inert text for a qualified examiner to review.
+API arguments are checked for supported action/artifact identifiers and valid states. There is not yet a manifest parser, input-size policy, acquisition metadata model, or source-reference type. The module never executes the command hints; they are inert text for an examiner to review against the system and tool versions in scope.
 
 The analyst, acquisition process, clocks, expectation model, operating-system documentation, and chain-of-custody records are separate trust dependencies. SIBERIAN cannot infer completeness where those sources do not establish it.
 
 ## Planned validation
 
-No tests or empirical evaluation are present yet. Before describing the detector as useful for forensic conclusions, validation should include at minimum:
+No tests or empirical evaluation are present in this repository yet. Before describing the detector as useful for forensic conclusions, validation should include at minimum:
 
 - all-present and all-confirmed-absent observations;
 - mixtures of present, confirmed absent, unknown, and out-of-scope records;
@@ -96,13 +74,15 @@ No tests or empirical evaluation are present yet. Before describing the detector
 - blind cases with known provenance, including benign controls and selective-removal cases;
 - calibration or an explicit decision to report only descriptive metrics.
 
-The repository currently contains no implementation against which these checks can run.
+The checks are not yet implemented or run.
 
 ## Open design decisions
 
-- Input schema and compatibility/versioning policy.
-- Empirical source and maintenance process for artifact expectations.
+- Version/configuration-specific sources and maintenance process for artifact expectations.
+- Collection coverage and acquisition provenance model.
 - Statistical model, thresholds, and evaluation corpus.
-- Output schema and independent verification format.
-- License and contribution terms.
+- Versioned manifest/output schema and independent verification format.
+- Contribution terms.
 - Whether `PASS` means “no selective-loss signal under this model” or something narrower; it must not imply proof that no tampering occurred.
+
+The language decision is recorded in [`docs/decisions/language-selection.md`](docs/decisions/language-selection.md).

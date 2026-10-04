@@ -12,5 +12,8 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = []
 
+[project.scripts]
+siberian = "siberian.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["siberian*"]

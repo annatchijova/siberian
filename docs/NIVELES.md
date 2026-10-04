@@ -6,6 +6,8 @@
 
 **Destino:** una herramienta forense independiente que analiza si el patrón de artefactos ausentes discrimina entre pérdida benigna y borrado selectivo, explica los límites de esa comparación y entrega un resultado reproducible que un tercero pueda revisar.
 
+La primera entrega acotada está definida en el [alcance del producto](PRODUCT_SCOPE.md): revisión local de brechas de evidencia a partir de un caso declarado. Los niveles siguientes describen el horizonte de validación y extensión; no son requisitos para que ese prototipo pequeño sea útil como ayuda de revisión.
+
 Este plan avanza hacia el producto completo. Cada nivel deja una herramienta útil que el siguiente amplía; no hay una versión descartable ni un nivel de “seguridad después”. Si el tiempo o la evidencia no alcanzan para un nivel, nos detenemos en el último nivel completo.
 
 ## Invariantes desde el primer nivel
@@ -21,7 +23,7 @@ Este plan avanza hacia el producto completo. Cada nivel deja una herramienta út
 
 ## Estado actual
 
-El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_silence.py`. Registra estados, referencias de evidencia, intervalo y alcance de adquisición. El esquema v3 conserva edición, arquitectura, revisión del build, canal de servicio y evidencia con marca de tiempo de la acción primaria; estos datos son declaraciones del analista y el digest los incluye, pero no verifica el contenido de las fuentes ni consulta una matriz de compatibilidad. El catálogo conserva cinco expectativas condicionales de Windows respaldadas por documentación primaria, con nombres acotados para conexión permitida y terminación de sesión; no calcula métricas ponderadas. La excavación de VIGÍA confirmó que los pesos del detector original no están calibrados, que `temporal_drift.py` es una herramienta separada y que los módulos de linaje/contrafácticos no operan sobre esta matriz. Faltan la matriz por versión/configuración y la validación empírica. Tampoco hay manifiesto persistente, CLI, hipótesis rivales, modelo calibrado ni corpus de evaluación. **Esto es una base contextual útil, todavía no un nivel terminado.**
+El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_silence.py` y una CLI local inicial (`validate`, `analyze`, `explain`) para casos JSON escritos por el analista. Registra estados, referencias de evidencia, intervalo y alcance de adquisición. El esquema v3 conserva edición, arquitectura, revisión del build, canal de servicio y evidencia con marca de tiempo de la acción primaria; estos datos son declaraciones del analista y el digest los incluye, pero no verifica el contenido de las fuentes ni consulta una matriz de compatibilidad. El catálogo conserva cinco expectativas condicionales de Windows respaldadas por documentación primaria, con nombres acotados para conexión permitida y terminación de sesión; no calcula métricas ponderadas. La excavación de VIGÍA confirmó que los pesos del detector original no están calibrados, que `temporal_drift.py` es una herramienta separada y que los módulos de linaje/contrafácticos no operan sobre esta matriz. Faltan la matriz por versión/configuración, validación empírica y validación con analistas. La CLI no parsea evidencia cruda. **Es un prototipo acotado, todavía no una herramienta forense validada.**
 
 ## Nivel 1 — Núcleo descriptivo contextualizado
 
@@ -46,7 +48,7 @@ El [protocolo de validación del Nivel 1](LEVEL1_VALIDATION_PROTOCOL.md) fija lo
 
 **Resultado útil:** un equipo puede guardar un expediente como archivo, repetir el análisis en otra máquina y comparar resultados sin depender de una sesión interactiva.
 
-**Construir:** manifiesto versionado en JSON; referencias a fuentes, tiempos, zonas horarias, adquisición y hashes de evidencia; comandos `validate`, `analyze` y `explain`; salida legible para analistas y salida JSON estable para automatización; ejecución local y sin red.
+**Construir:** expediente versionado en JSON; referencias a fuentes, tiempos, zonas horarias, adquisición y hashes de evidencia; salida persistente reproducible y verificador; comandos `validate`, `analyze` y `explain`; ejecución local y sin red. Ya existe una CLI inicial que lee casos y produce JSON en stdout; aún no guarda ni verifica bundles de informe.
 
 **Se considera completo cuando:**
 

@@ -83,12 +83,14 @@ The VIGÍA detector is a research starting point, not a validated standalone pro
 - `siberian/`: dependency-free analysis library and source-linked conditional Windows catalog.
 - [Active catalog matrix](docs/CATALOG_MATRIX.md): source claims and applicability gaps for each expectation.
 - [Windows lab kit](lab/README.md): read-only baseline collector and run record guidance; it contains no empirical results.
+- [Focused product scope](docs/PRODUCT_SCOPE.md): target analyst, workflow, first release, and explicit non-claims.
+- [Case file and CLI](docs/CASE_FILE_FORMAT.md): strict JSON input and the `validate`, `analyze`, and `explain` commands.
 - `docs/`: source provenance, technical behavior, build levels, and the language decision.
 - [Construction levels](docs/NIVELES.md): destination-driven path from a contextualized analysis core to calibrated, independently verifiable forensic reports.
 - [Level 1 validation protocol](docs/LEVEL1_VALIDATION_PROTOCOL.md): applicability-matrix fields, official-source review, and a controlled validation design. It records a plan, not results.
 - [Open work](PENDIENTES.md): what can proceed without Windows and the experiments that still require a Windows VM.
-- Next: complete the Level 1 catalog matrix across supported Windows versions and configurations, then validate it empirically.
+- Next: finish and refine the focused CLI workflow with synthetic cases; Windows compatibility and artifact behavior remain separate empirical validation work.
 
-There is no CLI, calibrated model, or validation corpus yet. There are no weighted suspicion metrics. Licensed under Apache-2.0.
+The offline CLI and strict case-file reader are an early prototype. There is no calibrated model, no operational validation corpus, and no empirical Windows validation. There are no weighted suspicion metrics. Licensed under Apache-2.0.
 
 > Evidence is not only what remains.

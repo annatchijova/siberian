@@ -4,7 +4,7 @@
 
 ## Status and scope
 
-This repository contains a first standalone Python library port of VIGÍA's adversarial-silence pattern. It has no command-line interface, calibrated statistical model, or validation corpus. It returns an evidence matrix and coverage counts; it does not issue a forensic verdict.
+This repository contains a standalone Python library port of VIGÍA's adversarial-silence pattern and an early offline CLI for analyst-authored JSON cases. It has no calibrated statistical model, operational validation corpus, or empirical Windows validation. It returns an evidence matrix and coverage counts; it does not issue a forensic verdict.
 
 The seed is VIGÍA idea 24, whose catalogue entry names `vigia/patterns/adversarial_silence.py` and `vigia/tools/temporal_drift.py`. Code review shows that only the first implements the adversarial-silence calculation; `temporal_drift.py` is a separate timestamp-consistency tool and does not feed or validate it. See the [VIGÍA source excavation](docs/VIGIA_SOURCE_EXCAVATION.md). SIBERIAN treats selective loss as a hypothesis to investigate, not an attribution method.
 
@@ -77,7 +77,7 @@ The standalone port addresses representation and provenance issues from the sour
 - The probability-sounding `fabrication_likelihood` field is omitted.
 - Each confirmed absence is gated on catalog applicability evidence.
 
-Important limits remain: the catalog is not yet a version/configuration matrix and does not validate a declared Windows release/build; references are locators and validity declarations supplied by the caller; collection quality and artifact dependencies are not modeled; and there is no calibrated inference, rival-hypothesis comparison, CLI, or empirical validation. The SHA-256 digest covers the declared context, catalog version and entries, and observation/status/reference records, including validity intervals for condition evidence. It does not attest to truth or completeness and is not a sealed chain-of-custody report. The temporal-drift module is a separate VIGÍA subsystem and is not part of this port.
+Important limits remain: the catalog is not yet a version/configuration matrix and does not validate a declared Windows release/build; references are locators and validity declarations supplied by the caller; collection quality and artifact dependencies are not modeled; there is no calibrated inference or rival-hypothesis comparison, and the CLI has no raw-evidence parser. The SHA-256 digest covers the declared context, catalog version and entries, and observation/status/reference records, including validity intervals for condition evidence. It does not attest to truth or completeness and is not a sealed chain-of-custody report. The temporal-drift module is a separate VIGÍA subsystem and is not part of this port.
 
 ## Determinism, provenance, and integrity
 
@@ -85,13 +85,13 @@ The implementation sorts catalog entries and uses a fixed versioned JSON structu
 
 ## Threat and trust boundaries
 
-API arguments are checked for supported action/artifact identifiers, valid states, and known condition names. There is not yet a manifest parser, input-size policy, acquisition metadata model, or typed source-reference format.
+API arguments are checked for supported action/artifact identifiers, valid states, and known condition names. The CLI reader accepts `siberian-case-v1`, rejects duplicate and unknown fields, requires timezone-aware timestamps, and caps input at 5 MiB. The file contains source references, not evidence payloads. It is not a general manifest, does not open referenced paths, and does not verify reference contents. See the [case file contract](docs/CASE_FILE_FORMAT.md).
 
 The analyst, acquisition process, clocks, expectation model, operating-system documentation, and chain-of-custody records are separate trust dependencies. SIBERIAN cannot infer completeness where those sources do not establish it.
 
 ## Planned validation
 
-Unit tests currently exercise the contextual core's input rules, states, and digest behavior. They do not validate the artifact catalog empirically. Before describing the analysis as useful for forensic conclusions, validation should include at minimum:
+Unit tests exercise the contextual core and CLI parser/report behavior with synthetic records. They do not validate the Windows artifact catalog empirically or establish practitioner demand. Before describing the analysis as useful for forensic conclusions, validation should include at minimum:
 
 - valid and incomplete applicability evidence for confirmed absences;
 - mixtures of present, confirmed absent, unknown, and out-of-scope records;

@@ -1,0 +1,87 @@
+{
+  "schema_version": "siberian-case-v1",
+  "context": {
+    "os_profile": "windows",
+    "os_release": "Windows 10",
+    "system_build": "19045",
+    "scope": "host:training-case / collected artifacts",
+    "interval_start": "2026-10-01T00:00:00Z",
+    "interval_end": "2026-10-02T00:00:00Z",
+    "acquisition_ref": "case://training/acquisition"
+  },
+  "activities": [
+    {
+      "action": "process_execution",
+      "observations": [
+        {
+          "artifact_type": "security_event_4688",
+          "status": "unknown",
+          "reason": "acquisition_gap",
+          "evidence_ref": "case://training/coverage-review"
+        }
+      ]
+    },
+    {
+      "action": "permitted_network_connection",
+      "observations": [
+        {
+          "artifact_type": "security_event_5156",
+          "status": "present",
+          "evidence_ref": "case://training/events/5156"
+        }
+      ]
+    },
+    {
+      "action": "successful_logon",
+      "observations": [
+        {
+          "artifact_type": "security_event_4624",
+          "status": "out_of_scope",
+          "reason": "not_applicable",
+          "evidence_ref": "case://training/host-role-review"
+        }
+      ]
+    },
+    {
+      "action": "session_termination",
+      "primary_action_evidence": {
+        "evidence_ref": "case://training/session-end",
+        "observed_at": "2026-10-01T14:00:00Z"
+      },
+      "observations": [
+        {
+          "artifact_type": "security_event_4634",
+          "status": "confirmed_absent",
+          "evidence_ref": "case://training/query/4634",
+          "conditions": {
+            "host_build_matches_documented_catalog_scope": {
+              "evidence_ref": "case://training/build",
+              "valid_from": "2026-10-01T00:00:00Z",
+              "valid_until": "2026-10-02T00:00:00Z"
+            },
+            "audit_logoff_success_enabled_for_interval": {
+              "evidence_ref": "case://training/audit-policy",
+              "valid_from": "2026-10-01T00:00:00Z",
+              "valid_until": "2026-10-02T00:00:00Z"
+            },
+            "security_log_acquired_and_covers_interval": {
+              "evidence_ref": "case://training/log-coverage",
+              "valid_from": "2026-10-01T00:00:00Z",
+              "valid_until": "2026-10-02T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "file_change",
+      "observations": [
+        {
+          "artifact_type": "ntfs_usn_change_journal",
+          "status": "present",
+          "evidence_ref": "case://training/usn-range"
+        }
+      ]
+    }
+  ]
+}

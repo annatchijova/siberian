@@ -83,12 +83,14 @@ El detector de VIGÍA es un punto de partida de investigación, no un producto i
 - `siberian/`: biblioteca de análisis sin dependencias y catálogo condicional de Windows con fuentes.
 - [Matriz del catálogo activo](docs/CATALOG_MATRIX.md): afirmaciones de fuentes y brechas de aplicabilidad por expectativa.
 - [Kit de laboratorio Windows](lab/README.md): recolector de línea base de solo lectura y guía para registrar corridas; todavía no contiene resultados empíricos.
+- [Alcance acotado del producto](docs/PRODUCT_SCOPE.md): analista objetivo, flujo, primera entrega y límites explícitos.
+- [Formato de caso y CLI](docs/CASE_FILE_FORMAT.md): entrada JSON estricta y comandos `validate`, `analyze` y `explain`.
 - `docs/`: procedencia, comportamiento técnico y decisión de lenguaje.
 - [Niveles de construcción](docs/NIVELES.md): camino hacia informes forenses calibrados y verificables por terceros, en etapas útiles e íntegras.
 - [Protocolo de validación del Nivel 1](docs/LEVEL1_VALIDATION_PROTOCOL.md): campos para la matriz de aplicabilidad, revisión de fuentes oficiales y diseño de validación controlada. Documenta un plan, no resultados.
 - [Pendientes](PENDIENTES.md): trabajo posible sin Windows y experimentos que requieren una VM Windows.
-- Próximo: completar la matriz del catálogo para versiones y configuraciones de Windows admitidas, y después validarla empíricamente.
+- Próximo: terminar y pulir el flujo acotado de la CLI con casos sintéticos; la compatibilidad y el comportamiento real de Windows quedan como validación empírica separada.
 
-Todavía no hay CLI, modelo calibrado ni corpus de validación. No hay métricas de sospecha ponderadas. Licencia Apache-2.0.
+La CLI local y el lector estricto de casos son un prototipo inicial. Todavía no hay modelo calibrado, corpus de validación operativa ni validación empírica en Windows. No hay métricas de sospecha ponderadas. Licencia Apache-2.0.
 
 > La evidencia no es solamente lo que permanece.

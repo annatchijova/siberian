@@ -11,7 +11,7 @@ Este archivo separa el trabajo que podemos avanzar en este entorno de la validac
 - [ ] Revisar la semántica y límites de cada expectativa contra documentación primaria; actualizar `docs/CATALOG_MATRIX.md` sin extrapolar más allá de la fuente.
 - [x] Definir un formato de registro de corrida versionado que vincule configuración exacta, acciones, adquisiciones, versiones de parser, hashes y errores (`lab/run-record.template.json`).
 - [x] Revisar estáticamente límites, permisos, consultas documentadas y escritura del recolector PowerShell; el runtime sigue pendiente de Windows.
-- [ ] Revisar que la API preserve `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN` y `OUT_OF_SCOPE`, sus causas y referencias, y que el digest cubra los campos declarados.
+- [x] Revisar que la API preserve `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN` y `OUT_OF_SCOPE`, sus causas y referencias, y que el digest cubra los campos declarados.
 
 ### Bloqueado por entorno — requiere Windows
 
@@ -25,14 +25,20 @@ Este archivo separa el trabajo que podemos avanzar en este entorno de la validac
 
 ## Siguiente secuencia
 
-1. Completar la matriz documental y el formato de registro de corridas desde este entorno.
-2. Mantener las etiquetas de laboratorio en `not-tested` hasta revisar evidencia reproducible.
-3. Cuando exista acceso a una VM Windows, realizar el preflight del recolector antes de cualquier experimento y empezar por controles positivos/negativos no destructivos.
-4. No calibrar scores ni inferir borrado selectivo hasta disponer de corridas controladas y evaluación ciega conforme a `docs/LEVEL1_VALIDATION_PROTOCOL.md`.
+La primera entrega corta se define en [`docs/PRODUCT_SCOPE.md`](docs/PRODUCT_SCOPE.md). Desde este entorno, continuar con:
+
+1. [x] Definir el esquema JSON de caso y política estricta de validación (`docs/CASE_FILE_FORMAT.md`).
+2. [x] Implementar el flujo local `validate` / `analyze` / `explain` sobre la biblioteca.
+3. [x] Añadir un caso sintético de brecha de adquisición y cobertura automatizada de entradas hostiles.
+4. [x] Añadir un caso sintético con los cuatro estados y una ausencia condicionada; los fixtures no son validación Windows.
+5. Mantener las etiquetas de laboratorio en `not-tested` hasta revisar evidencia reproducible.
+6. Cuando exista acceso a una VM Windows, realizar el preflight del recolector antes de experimentos y comenzar con controles positivos/negativos no destructivos.
+
+No calibrar scores ni inferir borrado selectivo sin corridas controladas y evaluación ciega conforme a `docs/LEVEL1_VALIDATION_PROTOCOL.md`.
 
 ## Niveles posteriores
 
-- [ ] Nivel 2: manifiesto persistente, CLI `validate` / `analyze` / `explain` y reproducción desde instalación limpia.
+- [ ] Nivel 2: persistir y verificar informes desde la instalación CLI; la lectura inicial de casos y `validate` / `analyze` / `explain` ya está implementada.
 - [ ] Nivel 3: hipótesis rivales, dependencias de artefactos y contrafácticos explícitos.
 - [ ] Nivel 4: evaluación empírica ciega y calibración, solo si los datos discriminan las hipótesis.
 - [ ] Nivel 5: bundle sellado y verificador independiente.

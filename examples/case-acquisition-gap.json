@@ -1,0 +1,33 @@
+{
+  "schema_version": "siberian-case-v1",
+  "context": {
+    "os_profile": "windows",
+    "os_release": "Windows 10",
+    "system_build": "19045",
+    "os_edition": "analyst-recorded-edition",
+    "architecture": "analyst-recorded-architecture",
+    "build_revision": "analyst-recorded-ubr",
+    "servicing_channel": "analyst-recorded-channel",
+    "scope": "host:training-case / Security.evtx",
+    "interval_start": "2026-10-01T00:00:00Z",
+    "interval_end": "2026-10-02T00:00:00Z",
+    "acquisition_ref": "case://training/acquisition/security.evtx"
+  },
+  "activities": [
+    {
+      "action": "process_execution",
+      "primary_action_evidence": {
+        "evidence_ref": "case://training/corroboration/process-execution",
+        "observed_at": "2026-10-01T12:00:00Z"
+      },
+      "observations": [
+        {
+          "artifact_type": "security_event_4688",
+          "status": "unknown",
+          "reason": "acquisition_gap",
+          "evidence_ref": "case://training/acquisition/coverage-review"
+        }
+      ]
+    }
+  ]
+}

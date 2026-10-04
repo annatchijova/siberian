@@ -78,7 +78,7 @@ The analyst, acquisition process, clocks, expectation model, operating-system do
 
 ## Planned validation
 
-No tests or empirical evaluation are present in this repository yet. Before describing the detector as useful for forensic conclusions, validation should include at minimum:
+Unit tests currently exercise the contextual core's input rules, states, and digest behavior. They do not validate the artifact catalog empirically. Before describing the analysis as useful for forensic conclusions, validation should include at minimum:
 
 - valid and incomplete applicability evidence for confirmed absences;
 - mixtures of present, confirmed absent, unknown, and out-of-scope records;
@@ -89,7 +89,7 @@ No tests or empirical evaluation are present in this repository yet. Before desc
 - blind cases with known provenance, including benign controls and selective-removal cases;
 - empirical validation before any calibrated score or decision threshold.
 
-The checks are not yet implemented or run.
+The empirical and integration checks above are not yet implemented or run.
 
 ## Open design decisions
 

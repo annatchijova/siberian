@@ -200,7 +200,9 @@ class AdversarialSilenceAnalyzer:
                 parsed_reason = ObservationReason(reason)
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"invalid observation reason: {reason!r}") from exc
-        if evidence_ref is not None and (not isinstance(evidence_ref, str) or not evidence_ref):
+        if evidence_ref is not None and (
+            not isinstance(evidence_ref, str) or not evidence_ref.strip()
+        ):
             raise ValueError("evidence_ref must be a non-empty reference or None")
         if condition_evidence is None:
             conditions: dict[str, str] = {}

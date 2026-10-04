@@ -14,7 +14,7 @@ def make_context(**overrides: object) -> AnalysisContext:
     values: dict[str, object] = {
         "os_profile": "windows",
         "os_release": "Windows 10",
-        "system_build": "26100",
+        "system_build": "19045",
         "scope": "host:case-123 / Security.evtx",
         "interval_start": datetime(2026, 10, 1, tzinfo=timezone.utc),
         "interval_end": datetime(2026, 10, 2, tzinfo=timezone.utc),
@@ -70,6 +70,41 @@ class ContextualAnalysisTests(unittest.TestCase):
         result = instance.analyze()
         self.assertEqual(result.confirmed_absent_count, 1)
         self.assertEqual(result.unknown_count, 0)
+
+    def test_known_observation_requires_nonblank_source_reference(self) -> None:
+        instance = analyzer()
+        with self.assertRaisesRegex(ValueError, "non-empty reference"):
+            instance.register_observation(
+                "process_execution",
+                "security_event_4688",
+                ArtifactStatus.PRESENT,
+                evidence_ref="  ",
+            )
+
+    def test_out_of_scope_is_explicit_and_counted_separately(self) -> None:
+        instance = analyzer()
+        instance.register_observation(
+            "process_execution",
+            "security_event_4688",
+            ArtifactStatus.OUT_OF_SCOPE,
+            evidence_ref="case://host-volume-scope",
+            reason=ObservationReason.NOT_APPLICABLE,
+        )
+        result = instance.analyze()
+        self.assertEqual(result.out_of_scope_count, 1)
+        self.assertEqual(result.unknown_count, 0)
+
+    def test_identical_duplicate_is_idempotent_conflict_is_rejected(self) -> None:
+        instance = analyzer()
+        args = (
+            "process_execution",
+            "security_event_4688",
+            ArtifactStatus.PRESENT,
+        )
+        instance.register_observation(*args, evidence_ref="case://event/4688")
+        instance.register_observation(*args, evidence_ref="case://event/4688")
+        with self.assertRaisesRegex(ValueError, "conflicting observations"):
+            instance.register_observation(*args, evidence_ref="case://other-event/4688")
 
     def test_condition_evidence_must_cover_analysis_interval(self) -> None:
         instance = analyzer()
@@ -138,6 +173,13 @@ class ContextualAnalysisTests(unittest.TestCase):
                     "security_log_acquired_and_covers_interval": condition_evidence("case://coverage/security"),
                 },
             )
+
+    def test_release_prefix_requires_a_boundary(self) -> None:
+        instance = analyzer(make_context(os_release="Windows 100"))
+        self.assertEqual(
+            instance.analyze().records[0].observation.reason,
+            ObservationReason.CATALOG_SCOPE_UNVERIFIED,
+        )
 
 
 if __name__ == "__main__":

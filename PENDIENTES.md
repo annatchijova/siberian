@@ -42,4 +42,4 @@ No calibrar scores ni inferir borrado selectivo sin corridas controladas y evalu
 - [ ] Nivel 3: hipótesis rivales, dependencias de artefactos y contrafácticos explícitos.
 - [ ] Nivel 4: evaluación empírica ciega y calibración, solo si los datos discriminan las hipótesis.
 - [ ] Nivel 5: bundle sellado y verificador independiente.
-- [ ] Nivel 6: adaptadores de importación para herramientas forenses elegidas con usuarios.
+- [ ] Nivel 6: adaptadores de importación para herramientas forenses elegidas con usuarios. Decisión inicial para Plaso documentada en [`docs/PLASO_IMPORT.md`](docs/PLASO_IMPORT.md): solo presencias con mapeo explícito; una fila ausente no prueba ausencia. Falta validar el diseño con analistas antes de implementar.

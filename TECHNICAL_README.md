@@ -75,7 +75,7 @@ Important limits remain: the catalog is not yet a version/configuration matrix a
 
 ## Determinism, provenance, and integrity
 
-The implementation sorts catalog entries and uses a fixed versioned JSON structure with sorted keys and compact separators before hashing its UTF-8 bytes with SHA-256. This is a deterministic digest for the current API payload. It is not a canonical manifest or an independent verifier format; schema/version evolution remains open.
+The implementation sorts catalog entries and uses a fixed versioned JSON structure with sorted keys and compact separators before hashing its UTF-8 bytes with SHA-256. This is a deterministic digest for the current API payload. Schema v2 changes the digest namespace from v1, so v1 and v2 digests are not comparable even when the optional platform fields are omitted. There is not yet a persisted-manifest reader or historical digest verifier. The digest is not a canonical manifest or an independent verifier format; schema/version evolution remains open.
 
 ## Threat and trust boundaries
 

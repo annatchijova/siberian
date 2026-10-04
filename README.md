@@ -82,6 +82,7 @@ The VIGÍA detector is a research starting point, not a validated standalone pro
 
 - `siberian/`: dependency-free analysis library and source-linked conditional Windows catalog.
 - [Active catalog matrix](docs/CATALOG_MATRIX.md): source claims and applicability gaps for each expectation.
+- [Windows lab kit](lab/README.md): read-only baseline collector and run record guidance; it contains no empirical results.
 - `docs/`: source provenance, technical behavior, build levels, and the language decision.
 - [Construction levels](docs/NIVELES.md): destination-driven path from a contextualized analysis core to calibrated, independently verifiable forensic reports.
 - [Level 1 validation protocol](docs/LEVEL1_VALIDATION_PROTOCOL.md): applicability-matrix fields, official-source review, and a controlled validation design. It records a plan, not results.

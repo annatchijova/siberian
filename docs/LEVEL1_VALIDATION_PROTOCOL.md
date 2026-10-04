@@ -41,6 +41,8 @@ Microsoft's [event 4688 documentation](https://learn.microsoft.com/en-us/windows
 
 ## 3. Controlled validation study
 
+The initial [Windows lab kit](../lab/README.md) records a bounded baseline for a VM run. It is intentionally read-only and does not perform the test actions or collect raw logs. Its counts are inventory observations, not proof of coverage or absence; preserve the source acquisitions and intervention timeline independently.
+
 ### Questions
 
 1. Under documented, matched conditions, does each artifact appear when its triggering activity occurs?

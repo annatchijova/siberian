@@ -40,7 +40,7 @@ El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_s
 
 La biblioteca actual aporta el modelo condicional inicial y registra los datos de plataforma que necesitará esa matriz. Las referencias de build aún son atestaciones aportadas por el analista, no verificaciones del programa. El Nivel 1 no se da por terminado hasta que exista una matriz de aplicabilidad sustentada para las versiones/configuraciones admitidas y evidencia empírica de generación, supervivencia, adquisición y límites.
 
-El [protocolo de validación del Nivel 1](LEVEL1_VALIDATION_PROTOCOL.md) fija los campos de esa matriz, separa fuentes documentales de observaciones de laboratorio y define controles benignos y casos ciegos. Es un plan; todavía no hay resultados empíricos ni tasas de error medidas.
+El [protocolo de validación del Nivel 1](LEVEL1_VALIDATION_PROTOCOL.md) fija los campos de esa matriz, separa fuentes documentales de observaciones de laboratorio y define controles benignos y casos ciegos. El [kit de laboratorio Windows](../lab/README.md) registra una línea base de solo lectura para una VM, pero aún no se ejecutó en Windows y no produce evidencia de ausencia ni resultados de validación. Todavía no hay resultados empíricos ni tasas de error medidas.
 
 ## Nivel 2 — Expediente reproducible y CLI
 

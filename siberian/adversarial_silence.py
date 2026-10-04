@@ -225,6 +225,8 @@ class AdversarialSilenceAnalyzer:
             if parsed_reason is not None:
                 raise ValueError("known observations cannot have an unknown/out-of-scope reason")
         if parsed_status is ArtifactStatus.CONFIRMED_ABSENT:
+            if self._context.system_build is None:
+                raise ValueError("confirmed absence requires a declared system_build")
             if not entry.supports_os_release(self._context.os_release):
                 raise ValueError(
                     f"catalog sources do not document {self._context.os_release!r} "

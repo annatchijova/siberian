@@ -1,6 +1,6 @@
 # SIBERIAN artifact catalog review
 
-**Catalog version:** `windows-msdocs-2026-10-04-v1`
+**Catalog version:** `windows-msdocs-2026-10-04-v2`
 
 **Review status:** source and applicability review; not empirical validation.
 
@@ -10,13 +10,13 @@ The inherited VIGÍA seed mixed event logs, current system state, caches, file-s
 
 | Activity | Catalog entry | Conditions required before confirming absence | Main interpretation limit |
 | --- | --- | --- | --- |
-| Process creation | Windows Security event 4688 | Process Creation auditing enabled for the interval; Security log acquired and covering the interval | Event generation depends on audit policy. Command-line content has a separate policy setting. |
-| Network connection | Windows Security event 5156 | Filtering Platform Connection success auditing enabled; Security log acquired and covering the interval | Success auditing can create very high event volume. |
-| Successful logon | Windows Security event 4624 | Successful Logon auditing enabled; Security log acquired and covering the interval | Event is recorded on the computer where the logon session is created. |
-| Session termination | Windows Security event 4634 | Successful Logoff auditing enabled; Security log acquired and covering the interval | Abrupt shutdown and other conditions can prevent a corresponding logoff event. |
-| File-system change | NTFS USN change journal | Target volume is NTFS; journal active for interval; acquired journal range covers interval without wrap | Journal size/allocation bounds mean older records may no longer be retained. |
+| Process creation | Windows Security event 4688 | Host build applicability attested; Process Creation auditing enabled; Security log acquired and covering the interval | Event generation depends on audit policy. Command-line content has a separate policy setting. |
+| Network connection | Windows Security event 5156 | Host build applicability attested; Filtering Platform Connection success auditing enabled; Security log acquired and covering the interval | Success auditing can create very high event volume. |
+| Successful logon | Windows Security event 4624 | Host build applicability attested; Successful Logon auditing enabled; Security log acquired and covering the interval | Event is recorded on the computer where the logon session is created. |
+| Session termination | Windows Security event 4634 | Host build applicability attested; Successful Logoff auditing enabled; Security log acquired and covering the interval | Abrupt shutdown and other conditions can prevent a corresponding logoff event. |
+| File-system change | NTFS USN change journal | Host build applicability attested; target volume is NTFS; journal active; acquired journal range covers interval without wrap | Journal size/allocation bounds mean older records may no longer be retained. |
 
-The linked Microsoft event/policy sources document Windows 10. The implementation rejects `CONFIRMED_ABSENT` for other declared releases and leaves those entries unknown with `catalog_scope_unverified`; it does not infer non-applicability. Build-specific compatibility within the Windows 10 family is not yet validated. It also requires analyst-maintained evidence references with declared time intervals for each listed condition. The program checks the references' presence and declared coverage, not whether their contents support the claim.
+The linked Microsoft event/policy sources document Windows 10. The implementation rejects `CONFIRMED_ABSENT` for other declared releases and leaves those entries unknown with `catalog_scope_unverified`; it does not infer non-applicability. A confirmed absence also requires a build-applicability attestation, but build-specific compatibility within the Windows 10 family is not yet checked against a maintained matrix. It requires analyst-maintained evidence references with declared time intervals for each listed condition. The program checks references' presence and declared coverage, not whether their contents support the claim.
 
 ## Seed entries deferred or excluded
 

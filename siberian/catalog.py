@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-CATALOG_VERSION = "windows-msdocs-2026-10-04-v1"
+CATALOG_VERSION = "windows-msdocs-2026-10-04-v2"
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,7 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
         description="Security event 4688 records a process creation event.",
         scope="Windows 10, matching the linked event and policy documentation; confirm event schema locally.",
         required_conditions=(
+            "host_build_matches_documented_catalog_scope",
             "audit_process_creation_enabled_for_interval",
             "security_log_acquired_and_covers_interval",
         ),
@@ -81,6 +82,7 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
         description="Security event 5156 records a connection permitted by Windows Filtering Platform.",
         scope="Windows 10 using Windows Filtering Platform, matching the linked event and policy documentation.",
         required_conditions=(
+            "host_build_matches_documented_catalog_scope",
             "audit_filtering_platform_connection_success_enabled_for_interval",
             "security_log_acquired_and_covers_interval",
         ),
@@ -98,6 +100,7 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
         description="Security event 4624 records a successfully created logon session.",
         scope="Windows 10, matching the linked event and policy documentation; recorded on the computer where the session is created.",
         required_conditions=(
+            "host_build_matches_documented_catalog_scope",
             "audit_logon_success_enabled_for_interval",
             "security_log_acquired_and_covers_interval",
         ),
@@ -115,6 +118,7 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
         description="Security event 4634 records termination of a logon session.",
         scope="Windows 10, matching the linked event and policy documentation; session termination is distinct from user-initiated logoff.",
         required_conditions=(
+            "host_build_matches_documented_catalog_scope",
             "audit_logoff_success_enabled_for_interval",
             "security_log_acquired_and_covers_interval",
         ),
@@ -132,6 +136,7 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
         description="The NTFS USN change journal records file, directory, and other NTFS-object changes.",
         scope="Windows 10 NTFS volume and change interval; it is not host-wide or cross-filesystem.",
         required_conditions=(
+            "host_build_matches_documented_catalog_scope",
             "target_volume_is_ntfs",
             "usn_journal_active_for_interval",
             "acquired_journal_range_covers_interval_without_wrap",

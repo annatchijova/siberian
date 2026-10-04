@@ -31,6 +31,11 @@ analysis.register_observation(
     "process_execution", "security_event_4688", ArtifactStatus.CONFIRMED_ABSENT,
     evidence_ref="case://acquisition/security.evtx/query-4688",
     condition_evidence={
+        "host_build_matches_documented_catalog_scope": ConditionEvidence(
+            "case://host/build-and-event-schema",
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 10, 2, tzinfo=timezone.utc),
+        ),
         "audit_process_creation_enabled_for_interval": ConditionEvidence(
             "case://policy/auditpol-2026-10-01",
             datetime(2026, 10, 1, tzinfo=timezone.utc),

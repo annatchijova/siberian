@@ -63,6 +63,7 @@ class ContextualAnalysisTests(unittest.TestCase):
             ArtifactStatus.CONFIRMED_ABSENT,
             evidence_ref="case://query/4688",
             condition_evidence={
+                "host_build_matches_documented_catalog_scope": condition_evidence("case://host/build-and-schema"),
                 "audit_process_creation_enabled_for_interval": condition_evidence("case://policy/auditpol"),
                 "security_log_acquired_and_covers_interval": condition_evidence("case://coverage/security"),
             },
@@ -120,6 +121,7 @@ class ContextualAnalysisTests(unittest.TestCase):
                 ArtifactStatus.CONFIRMED_ABSENT,
                 evidence_ref="case://query/4688",
                 condition_evidence={
+                    "host_build_matches_documented_catalog_scope": condition_evidence("case://host/build-and-schema"),
                     "audit_process_creation_enabled_for_interval": condition_evidence("case://policy/auditpol"),
                     "security_log_acquired_and_covers_interval": too_short,
                 },
@@ -172,6 +174,16 @@ class ContextualAnalysisTests(unittest.TestCase):
                     "audit_process_creation_enabled_for_interval": condition_evidence("case://policy/auditpol"),
                     "security_log_acquired_and_covers_interval": condition_evidence("case://coverage/security"),
                 },
+            )
+
+    def test_confirmed_absence_requires_declared_build(self) -> None:
+        instance = analyzer(make_context(system_build=None))
+        with self.assertRaisesRegex(ValueError, "requires a declared system_build"):
+            instance.register_observation(
+                "process_execution",
+                "security_event_4688",
+                ArtifactStatus.CONFIRMED_ABSENT,
+                evidence_ref="case://query/4688",
             )
 
     def test_release_prefix_requires_a_boundary(self) -> None:

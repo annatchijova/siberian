@@ -34,7 +34,7 @@ El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_s
 - cada artefacto del catálogo declara plataforma/versión/configuración admitida, condiciones necesarias, límites temporales y fuente verificable;
 - desconocidos, no adquiridos, inaplicables y ausencias confirmadas producen conteos distintos;
 - duplicados o datos incompatibles se rechazan con errores precisos;
-- cada ausencia confirmada exige referencia a la fuente adquirida y evidencia temporal de sus condiciones que cubra todo el intervalo analizado;
+- cada ausencia confirmada exige build declarado, atestación referenciada de aplicabilidad y evidencia temporal para las condiciones que cubra todo el intervalo analizado;
 - la misma entrada, catálogo y versión producen el mismo resultado y digest;
 - el resumen muestra cobertura y cada observación, sin convertir conteos en sospecha o intención.
 

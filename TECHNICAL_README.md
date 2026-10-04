@@ -29,6 +29,11 @@ detector.register_observation(
     "process_execution", "security_event_4688", ArtifactStatus.CONFIRMED_ABSENT,
     evidence_ref="case://acquisition/security.evtx/query-4688",
     condition_evidence={
+        "host_build_matches_documented_catalog_scope": ConditionEvidence(
+            "case://host/build-and-event-schema",
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 10, 2, tzinfo=timezone.utc),
+        ),
         "audit_process_creation_enabled_for_interval": ConditionEvidence(
             "case://policy/auditpol",
             datetime(2026, 10, 1, tzinfo=timezone.utc),
@@ -46,7 +51,7 @@ result = detector.analyze()
 
 The versioned Windows catalog contains conditional entries for Security events 4688, 5156, 4624, 4634, and the NTFS USN change journal. The linked source set documents Windows 10; confirmed absences for other releases are rejected, while entries remain `UNKNOWN` with `catalog_scope_unverified`. Unsupported operating systems fail closed. Each entry lists applicability conditions, retention limits, interpretation limits, and primary documentation sources. The catalog is not yet a matrix across Windows 10 builds and policy configurations. See the [catalog review](docs/CATALOG_REVIEW.md).
 
-Observations are `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, or `OUT_OF_SCOPE`. Unreported catalog entries default to `UNKNOWN` with `conditions_unverified`. Known states require an evidence reference. Confirmed absence additionally requires a `ConditionEvidence` reference for each entry-specific applicability condition; every condition interval must cover the complete analysis interval. These are caller-provided locators and declarations, not automatically verified evidence. Out-of-scope entries require a documented `not_applicable` reason and reference.
+Observations are `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, or `OUT_OF_SCOPE`. Unreported catalog entries default to `UNKNOWN` with `conditions_unverified`. Known states require an evidence reference. Confirmed absence also requires a declared OS build and a `ConditionEvidence` reference for each entry-specific applicability condition, including an analyst attestation that the host build is within catalog scope. Every condition interval must cover the complete analysis interval. These are caller-provided locators and declarations, not automatically verified evidence. Out-of-scope entries require a documented `not_applicable` reason and reference.
 
 ## Current analysis
 

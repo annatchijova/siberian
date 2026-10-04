@@ -48,7 +48,8 @@ El detector de VIGÍA es un punto de partida de investigación, no un producto i
 
 - `siberian/`: biblioteca de análisis sin dependencias y catálogos iniciales para Windows/Linux.
 - `docs/`: procedencia, comportamiento técnico y decisión de lenguaje.
-- Próximo: validar las expectativas de artefactos, crear un formato versionado de manifiesto y luego evaluar hipótesis rivales.
+- [Niveles de construcción](docs/NIVELES.md): camino hacia informes forenses calibrados y verificables por terceros, en etapas útiles e íntegras.
+- Próximo: cerrar el Nivel 1 validando las expectativas de artefactos y sus condiciones de aplicabilidad.
 
 Todavía no hay CLI, modelo calibrado ni corpus de validación. Los pesos descriptivos son supuestos heredados de investigación, no probabilidades. Licencia Apache-2.0.
 

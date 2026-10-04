@@ -48,7 +48,8 @@ The VIGÍA detector is a research starting point, not a validated standalone pro
 
 - `siberian/`: dependency-free analysis library and Windows/Linux seed catalogues.
 - `docs/`: source provenance, technical behavior, and the language decision.
-- Next: validate the artifact expectations, add a versioned manifest format, then evaluate rival hypotheses.
+- [Construction levels](docs/NIVELES.md): destination-driven path from a contextualized analysis core to calibrated, independently verifiable forensic reports.
+- Next: close Level 1 by validating artifact expectations and their applicability conditions.
 
 There is no CLI, calibrated model, or validation corpus yet. The descriptive weights are inherited research assumptions, not probabilities. Licensed under Apache-2.0.
 

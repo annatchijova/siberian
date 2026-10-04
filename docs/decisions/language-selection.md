@@ -1,6 +1,6 @@
 # Language decision: SIBERIAN analysis core
 
-**Status:** accepted for the first standalone port
+**Status:** selected by the project owner for the first standalone port
 
 **Date:** 2026-10-03
 

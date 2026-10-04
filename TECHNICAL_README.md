@@ -86,3 +86,5 @@ The checks are not yet implemented or run.
 - Whether `PASS` means “no selective-loss signal under this model” or something narrower; it must not imply proof that no tampering occurred.
 
 The language decision is recorded in [`docs/decisions/language-selection.md`](docs/decisions/language-selection.md).
+
+The product destination and construction gates are in the [Spanish level plan](docs/NIVELES.md).

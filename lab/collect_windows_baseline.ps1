@@ -43,8 +43,12 @@ if ($intervalStart -ge $intervalEnd) {
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)
 [IO.Directory]::CreateDirectory($outputRoot) | Out-Null
 $outputFile = Join-Path $outputRoot "baseline-$RunId.json"
+$temporaryFile = Join-Path $outputRoot "baseline-$RunId.$PID.tmp"
 if ([IO.File]::Exists($outputFile)) {
     throw "Refusing to overwrite existing baseline: $outputFile"
+}
+if ([IO.File]::Exists($temporaryFile)) {
+    throw "Refusing to overwrite an existing temporary report: $temporaryFile"
 }
 
 function Add-CollectionError {
@@ -210,7 +214,8 @@ $report = [ordered]@{
 }
 
 $json = $report | ConvertTo-Json -Depth 10
-[IO.File]::WriteAllText($outputFile, $json, [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($temporaryFile, $json, [Text.UTF8Encoding]::new($false))
+[IO.File]::Move($temporaryFile, $outputFile)
 $writtenHash = (Get-FileHash -LiteralPath $outputFile -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Output "Baseline written: $outputFile"
 Write-Output "SHA-256: $writtenHash"

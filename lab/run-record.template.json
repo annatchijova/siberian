@@ -1,0 +1,90 @@
+{
+  "schema_version": "siberian-lab-run-record-v1",
+  "study_id": "replace-with-study-id",
+  "run_id": "replace-with-unique-run-id",
+  "phase": "pilot",
+  "status": "not_started",
+  "created_at_utc": null,
+  "reviewed_at_utc": null,
+  "platform": {
+    "product": null,
+    "release": null,
+    "edition": null,
+    "architecture": null,
+    "build": null,
+    "ubr": null,
+    "servicing_channel": null,
+    "vm_image_reference": null,
+    "vm_image_sha256": null,
+    "snapshot_before": null,
+    "snapshot_after": null,
+    "snapshot_restore_verified": null
+  },
+  "time": {
+    "analysis_start_utc": null,
+    "analysis_end_utc": null,
+    "clock_source": null,
+    "estimated_clock_error_ms": null
+  },
+  "configuration_evidence": [
+    {
+      "kind": "audit_policy_export",
+      "reference": null,
+      "sha256": null,
+      "captured_at_utc": null
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "replace-with-action-id",
+      "catalog_action": null,
+      "artifact_type": null,
+      "action_host": null,
+      "observed_at_utc": null,
+      "evidence_reference": null
+    }
+  ],
+  "acquisitions": [
+    {
+      "source": null,
+      "reference": null,
+      "format": null,
+      "collector": null,
+      "collector_version": null,
+      "parser": null,
+      "parser_version": null,
+      "coverage_start_utc": null,
+      "coverage_end_utc": null,
+      "sha256": null,
+      "errors": []
+    }
+  ],
+  "observations": [
+    {
+      "action_id": "replace-with-action-id",
+      "artifact_type": null,
+      "control_class": "positive_generation",
+      "expected_result": null,
+      "observed_result": "not_run",
+      "evidence_reference": null,
+      "evidence_sha256": null,
+      "notes": null
+    }
+  ],
+  "intervention": {
+    "description": null,
+    "operator_record_reference": null,
+    "operator_record_sha256": null
+  },
+  "collector_report": {
+    "reference": null,
+    "sha256": null,
+    "collection_errors": []
+  },
+  "review": {
+    "reviewer": null,
+    "independent_reviewer": null,
+    "limitations": [],
+    "disposition": "not_reviewed"
+  }
+}

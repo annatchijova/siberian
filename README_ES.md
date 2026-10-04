@@ -75,6 +75,7 @@ El detector de VIGÍA es un punto de partida de investigación, no un producto i
 - `siberian/`: biblioteca de análisis sin dependencias y catálogo condicional de Windows con fuentes.
 - `docs/`: procedencia, comportamiento técnico y decisión de lenguaje.
 - [Niveles de construcción](docs/NIVELES.md): camino hacia informes forenses calibrados y verificables por terceros, en etapas útiles e íntegras.
+- [Protocolo de validación del Nivel 1](docs/LEVEL1_VALIDATION_PROTOCOL.md): campos para la matriz de aplicabilidad, revisión de fuentes oficiales y diseño de validación controlada. Documenta un plan, no resultados.
 - Próximo: completar la matriz del catálogo para versiones y configuraciones de Windows admitidas, y después validarla empíricamente.
 
 Todavía no hay CLI, modelo calibrado ni corpus de validación. No hay métricas de sospecha ponderadas. Licencia Apache-2.0.

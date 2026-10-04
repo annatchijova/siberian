@@ -40,6 +40,8 @@ El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_s
 
 La biblioteca actual aporta el modelo condicional inicial. El Nivel 1 no se da por terminado hasta que exista una matriz de aplicabilidad sustentada para las versiones/configuraciones admitidas y evidencia empírica de supervivencia y límites.
 
+El [protocolo de validación del Nivel 1](LEVEL1_VALIDATION_PROTOCOL.md) fija los campos de esa matriz, separa fuentes documentales de observaciones de laboratorio y define controles benignos y casos ciegos. Es un plan; todavía no hay resultados empíricos ni tasas de error medidas.
+
 ## Nivel 2 — Expediente reproducible y CLI
 
 **Resultado útil:** un equipo puede guardar un expediente como archivo, repetir el análisis en otra máquina y comparar resultados sin depender de una sesión interactiva.

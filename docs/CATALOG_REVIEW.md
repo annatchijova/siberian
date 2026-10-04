@@ -4,6 +4,8 @@
 
 **Review status:** source and applicability review; not empirical validation.
 
+The supported range in the current implementation is broader than the evidence currently represented by its generic `Windows 10` label. A required build attestation is supplied by the caller; the library does not check it against a per-build/per-edition matrix. Windows 10 Home/Pro reached end of support on October 14, 2025; LTSC editions have separate lifecycles. See Microsoft's [Windows 10 lifecycle table](https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro). The matrix and laboratory work required to bound claims are specified in the [Level 1 validation protocol](LEVEL1_VALIDATION_PROTOCOL.md).
+
 The inherited VIGÍA seed mixed event logs, current system state, caches, file-system traces, and externally collected records as if they were comparable expectations. It also assigned ordinal “erasure difficulty” and “forensic value” weights without a calibration dataset. SIBERIAN removes those weights and activates only entries whose basic semantics and key applicability conditions can be tied to primary documentation.
 
 ## Active conditional entries

@@ -6,7 +6,7 @@
 
 This repository contains a first standalone Python library port of VIGÍA's adversarial-silence pattern. It has no command-line interface, calibrated statistical model, or validation corpus. It returns an evidence matrix and coverage counts; it does not issue a forensic verdict.
 
-The seed is VIGÍA idea 24, supported there by `vigia/patterns/adversarial_silence.py` and `vigia/tools/temporal_drift.py`. The source catalogue describes the idea as comparing selective loss of difficult-to-erase artifacts with easier-to-erase artifacts. SIBERIAN treats this as a hypothesis to investigate, not an attribution method.
+The seed is VIGÍA idea 24, whose catalogue entry names `vigia/patterns/adversarial_silence.py` and `vigia/tools/temporal_drift.py`. Code review shows that only the first implements the adversarial-silence calculation; `temporal_drift.py` is a separate timestamp-consistency tool and does not feed or validate it. See the [VIGÍA source excavation](docs/VIGIA_SOURCE_EXCAVATION.md). SIBERIAN treats selective loss as a hypothesis to investigate, not an attribution method.
 
 ## Current API and inputs
 

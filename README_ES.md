@@ -2,6 +2,8 @@
 
 [English](README.md) · **Español** · [README técnico](TECHNICAL_README.md)
 
+> 🚧 **EN CONSTRUCCIÓN — TODAVÍA NO ESTÁ LISTO PARA USO OPERATIVO.** SIBERIAN es un prototipo inicial; su catálogo, sus interfaces y sus afirmaciones siguen en desarrollo y validación.
+
 <p align="center">
   <img src="visual/logo.png" alt="SIBERIAN: análisis de silencio adversarial — la evidencia no es solamente lo que permanece." width="100%">
 </p>

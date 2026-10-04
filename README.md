@@ -2,6 +2,8 @@
 
 [English](README.md) · [Español](README_ES.md) · **[Technical README](TECHNICAL_README.md)**
 
+> 🚧 **UNDER CONSTRUCTION — NOT READY FOR OPERATIONAL USE.** SIBERIAN is an early prototype; its catalog, interfaces, and claims are still being developed and validated.
+
 <p align="center">
   <img src="visual/logo.png" alt="SIBERIAN: Adversarial Silence Analysis — Evidence is not only what remains." width="100%">
 </p>

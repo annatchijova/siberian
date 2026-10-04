@@ -55,6 +55,16 @@ The reviewed code has no artifact-absence input, no expected-artifact model, and
 - its chronology checks and labels are not evidence validating the absence detector;
 - a future SIBERIAN temporal input adapter would need its own source review and validation and must not import the module's verdict or confidence as an established fact.
 
+## Relationship to hypothesis lineage and counterfactual modules
+
+The earlier SIBERIAN direction also cited VIGÍA's `hypothesis_lineage.py` and `vigia_counter_fact.py` as possible foundations for rival explanations and counterfactuals. Review shows useful interface ideas, but neither module consumes SIBERIAN-style artifact observations.
+
+`HypothesisLineageTracker` stores nodes with verdicts, iteration numbers, costs, and sets of covered/ignored signal names. It selects the last node with a requested winner ID, calls other hypotheses within a fixed 20% cost margin near-misses, and calls ignored signals covered by another hypothesis pivots. Its `verdict_stability` is `count(winner-ID nodes) / count(distinct iteration values)`; this can exceed one if the winner ID has multiple nodes in an iteration. The lineage hash includes only winner ID plus each node's ID, verdict, final cost, and iteration, omitting signal sets, parent links, elimination reasons, and other costs. The characterization test records an example value, not validity of the metric or pivot claims.
+
+`CounterFactEngine` accepts an abductive-result dictionary from VIGÍA, then perturbs its winner/challenger artifact lists and costs according to VIGÍA's `(cost, -coverage, required-count)` ordering. It uses a fixed logistic-shaped `plausibility` heuristic with floating-point exponentiation and emits human-readable investigative directives. Its report hash includes `generated_at`, so equal substantive input analyzed at different times produces a different hash. The report's use of terms such as “verified”, “plausibility”, and “Daubert” is stronger than what its calculations alone establish. A repository-wide test search found no direct `CounterFactEngine` test reference.
+
+**Disposition for SIBERIAN:** retain the output ideas—list competing explanations, identify observations that could distinguish them, state the effect of changing an assumption, and preserve lineage—but implement them over versioned SIBERIAN records and explicit, testable rules. Do not reuse VIGÍA's cost scale, 20% near-miss threshold, pivot confidence delta, logistic plausibility, generated report hash, or forensic/legal labels without independent methodological justification and evaluation.
+
 ## What SIBERIAN carries forward
 
 SIBERIAN retains the research question: compare an observed, action-linked evidence pattern with a bounded expectation, including what is absent. Its current implementation intentionally does not port the source weights or inference labels. It associates observations with `(action, artifact_type)`, distinguishes `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, and `OUT_OF_SCOPE`, and records source/context references. Its current Windows catalog is a narrow, conditional subset, not a complete port of the source knowledge base.

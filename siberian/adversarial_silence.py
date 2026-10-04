@@ -14,6 +14,8 @@ from enum import Enum
 
 from .catalog import CATALOG_VERSION, ExpectedArtifact, catalog_for_profile
 
+ANALYSIS_SCHEMA_VERSION = "siberian-evidence-matrix-v2"
+
 
 class ArtifactStatus(str, Enum):
     PRESENT = "present"
@@ -44,6 +46,10 @@ class AnalysisContext:
     interval_start: datetime
     interval_end: datetime
     acquisition_ref: str
+    os_edition: str | None = None
+    architecture: str | None = None
+    build_revision: str | None = None
+    servicing_channel: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("os_profile", "os_release", "scope", "acquisition_ref"):
@@ -54,6 +60,10 @@ class AnalysisContext:
             not isinstance(self.system_build, str) or not self.system_build.strip()
         ):
             raise ValueError("system_build must be a non-empty string or None")
+        for name in ("os_edition", "architecture", "build_revision", "servicing_channel"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} must be a non-empty string or None")
         if not isinstance(self.interval_start, datetime) or not isinstance(
             self.interval_end, datetime
         ):
@@ -67,6 +77,9 @@ class AnalysisContext:
         object.__setattr__(self, "scope", self.scope.strip())
         object.__setattr__(self, "acquisition_ref", self.acquisition_ref.strip())
         object.__setattr__(self, "system_build", self.system_build.strip() if self.system_build else None)
+        for name in ("os_edition", "architecture", "build_revision", "servicing_channel"):
+            value = getattr(self, name)
+            object.__setattr__(self, name, value.strip() if value is not None else None)
         object.__setattr__(self, "interval_start", start)
         object.__setattr__(self, "interval_end", end)
 
@@ -127,6 +140,7 @@ class SilenceAnalysisResult:
     out_of_scope_count: int
     audit_hash: str
     records: tuple[SilenceRecord, ...]
+    schema_version: str = ANALYSIS_SCHEMA_VERSION
 
     @property
     def known_count(self) -> int:
@@ -302,6 +316,7 @@ class AdversarialSilenceAnalyzer:
             out_of_scope_count=counts[ArtifactStatus.OUT_OF_SCOPE],
             audit_hash=digest,
             records=records,
+            schema_version=ANALYSIS_SCHEMA_VERSION,
         )
 
 
@@ -330,6 +345,10 @@ def _context_payload(context: AnalysisContext) -> dict[str, str | None]:
         "os_profile": context.os_profile,
         "os_release": context.os_release,
         "system_build": context.system_build,
+        "os_edition": context.os_edition,
+        "architecture": context.architecture,
+        "build_revision": context.build_revision,
+        "servicing_channel": context.servicing_channel,
         "scope": context.scope,
         "interval_start": context.interval_start.isoformat(timespec="microseconds"),
         "interval_end": context.interval_end.isoformat(timespec="microseconds"),
@@ -349,7 +368,7 @@ def _compute_analysis_hash(
     context: AnalysisContext, records: tuple[SilenceRecord, ...]
 ) -> str:
     payload = {
-        "schema": "siberian-evidence-matrix-v1",
+        "schema": ANALYSIS_SCHEMA_VERSION,
         "catalog_version": CATALOG_VERSION,
         "context": _context_payload(context),
         "records": [

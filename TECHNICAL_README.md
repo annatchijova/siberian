@@ -18,6 +18,8 @@ from siberian import AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus
 
 context = AnalysisContext(
     os_profile="windows", os_release="Windows 10", system_build="recorded-build",
+    os_edition="recorded-edition", architecture="recorded-architecture",
+    build_revision="recorded-revision", servicing_channel="recorded-channel",
     scope="host:case-123 / Security.evtx",
     interval_start=datetime(2026, 10, 1, tzinfo=timezone.utc),
     interval_end=datetime(2026, 10, 2, tzinfo=timezone.utc),
@@ -55,7 +57,7 @@ Observations are `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, or `OUT_OF_SCOPE`. Un
 
 ## Current analysis
 
-The result includes expected, present, confirmed-absent, unknown, and out-of-scope counts; the complete records; declared context; catalog version; and a SHA-256 digest. Weighted scores were removed because their inherited ordinal weights had no empirical support. There is no composite score, threshold, or `PASS` / `WARN` / `ABSTAIN` decision.
+The result includes schema version `siberian-evidence-matrix-v2`, expected/present/confirmed-absent/unknown/out-of-scope counts, complete records, declared context, catalog version, and a SHA-256 digest. Optional edition, architecture, build revision, and servicing-channel values are analyst declarations and are included in the digest; they are not independently verified. Weighted scores were removed because their inherited ordinal weights had no empirical support. There is no composite score, threshold, or `PASS` / `WARN` / `ABSTAIN` decision.
 
 ## Source-code observations
 

@@ -20,6 +20,8 @@ from siberian import AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus
 
 context = AnalysisContext(
     os_profile="windows", os_release="Windows 10", system_build="recorded-build",
+    os_edition="recorded-edition", architecture="recorded-architecture",
+    build_revision="recorded-revision", servicing_channel="recorded-channel",
     scope="host:case-123 / Security.evtx",
     interval_start=datetime(2026, 10, 1, tzinfo=timezone.utc),
     interval_end=datetime(2026, 10, 2, tzinfo=timezone.utc),
@@ -52,7 +54,7 @@ result = analysis.analyze()
 print(result.confirmed_absent_count, result.unknown_count, result.audit_hash)
 ```
 
-Unreported artifacts remain `UNKNOWN`. `CONFIRMED_ABSENT` requires a reference to the acquired source and evidence for every applicability condition in the catalog entry. A reference does not validate itself: analysts must inspect the underlying material. Absence alone does not establish deletion, tampering, attribution, or intent. See the **[Technical README](TECHNICAL_README.md)** and [catalog review](docs/CATALOG_REVIEW.md).
+Unreported artifacts remain `UNKNOWN`. The result exposes schema version `siberian-evidence-matrix-v2`; its digest covers declared edition, architecture, build revision, and servicing channel when supplied. These fields are analyst-provided context, not automatic system attestation. `CONFIRMED_ABSENT` requires a reference to the acquired source and evidence for every applicability condition in the catalog entry. A reference does not validate itself: analysts must inspect the underlying material. Absence alone does not establish deletion, tampering, attribution, or intent. See the **[Technical README](TECHNICAL_README.md)** and [catalog review](docs/CATALOG_REVIEW.md).
 
 ## What makes the question useful
 

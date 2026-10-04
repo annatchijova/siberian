@@ -146,6 +146,22 @@ class ContextualAnalysisTests(unittest.TestCase):
         self.assertEqual(utc_result.audit_hash, offset_result.audit_hash)
         self.assertNotEqual(utc_result.audit_hash, changed_scope_result.audit_hash)
 
+    def test_digest_includes_declared_platform_configuration_and_schema(self) -> None:
+        base = analyzer(make_context()).analyze()
+        configured = analyzer(make_context(
+            os_edition="recorded-edition",
+            architecture="recorded-architecture",
+            build_revision="recorded-revision",
+            servicing_channel="recorded-channel",
+        )).analyze()
+
+        self.assertEqual(base.schema_version, "siberian-evidence-matrix-v2")
+        self.assertNotEqual(base.audit_hash, configured.audit_hash)
+
+    def test_optional_platform_fields_reject_blank_values(self) -> None:
+        with self.assertRaisesRegex(ValueError, "architecture must be a non-empty string"):
+            make_context(architecture="  ")
+
     def test_context_rejects_naive_or_reversed_intervals(self) -> None:
         with self.assertRaisesRegex(ValueError, "timezone"):
             make_context(interval_start=datetime(2026, 10, 1))

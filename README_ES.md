@@ -20,6 +20,8 @@ from siberian import AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus
 
 context = AnalysisContext(
     os_profile="windows", os_release="Windows 10", system_build="build-registrado",
+    os_edition="edición-registrada", architecture="arquitectura-registrada",
+    build_revision="revisión-registrada", servicing_channel="canal-registrado",
     scope="host:caso-123 / Security.evtx",
     interval_start=datetime(2026, 10, 1, tzinfo=timezone.utc),
     interval_end=datetime(2026, 10, 2, tzinfo=timezone.utc),
@@ -52,7 +54,7 @@ result = analysis.analyze()
 print(result.confirmed_absent_count, result.unknown_count, result.audit_hash)
 ```
 
-Los artefactos sin registrar quedan como `UNKNOWN`. `CONFIRMED_ABSENT` requiere una referencia a la fuente adquirida y evidencia para cada condición de aplicabilidad del catálogo. La referencia no se valida sola: el analista debe revisar el material. La ausencia por sí sola no demuestra borrado, manipulación, atribución ni intención. Ver **[README técnico](TECHNICAL_README.md)** y [revisión del catálogo](docs/CATALOG_REVIEW.md).
+Los artefactos sin registrar quedan como `UNKNOWN`. El resultado expone el esquema `siberian-evidence-matrix-v2`; su digest incluye edición, arquitectura, revisión del build y canal de servicio declarados cuando se informan. Son datos aportados por el analista, no una atestación automática del sistema. `CONFIRMED_ABSENT` requiere una referencia a la fuente adquirida y evidencia para cada condición de aplicabilidad del catálogo. La referencia no se valida sola: el analista debe revisar el material. La ausencia por sí sola no demuestra borrado, manipulación, atribución ni intención. Ver **[README técnico](TECHNICAL_README.md)** y [revisión del catálogo](docs/CATALOG_REVIEW.md).
 
 ## Qué aporta la pregunta
 

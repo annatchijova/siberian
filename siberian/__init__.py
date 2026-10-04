@@ -1,6 +1,7 @@
 """SIBERIAN: deterministic evidence matrices for conditional artifact absence."""
 
 from .adversarial_silence import (
+    ANALYSIS_SCHEMA_VERSION,
     AnalysisContext,
     AdversarialSilenceAnalyzer,
     ArtifactStatus,
@@ -13,6 +14,7 @@ from .adversarial_silence import (
 )
 
 __all__ = [
+    "ANALYSIS_SCHEMA_VERSION",
     "AnalysisContext",
     "AdversarialSilenceAnalyzer",
     "ArtifactStatus",

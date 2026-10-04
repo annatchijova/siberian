@@ -1,45 +1,18 @@
-"""Descriptive analysis of expected artifacts that are confirmed absent.
+"""Contextual evidence matrix for conditional artifact expectations.
 
-Adapted from VIGÍA's ``vigia/patterns/adversarial_silence.py``. The original
-catalogue and weights are retained as research assumptions, not validated
-probabilities. This module does not infer deletion, attribution, or intent.
+This module records observations and collection conditions. It deliberately
+does not calculate suspicion scores or decide whether an absence is malicious.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
-from fractions import Fraction
-from typing import Mapping
 
-
-@dataclass(frozen=True)
-class ExpectedArtifact:
-    """An artifact expected for an action under a declared OS profile.
-
-    The fractions are ordinal research weights from the VIGÍA seed catalogue;
-    they are not empirically calibrated probabilities.
-    """
-
-    artifact_type: str
-    erasure_difficulty: Fraction
-    forensic_value: Fraction
-    detection_command: str
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.artifact_type, str) or not self.artifact_type:
-            raise ValueError("artifact_type must not be empty")
-        if not isinstance(self.detection_command, str):
-            raise TypeError("detection_command must be str")
-        for name, value in (
-            ("erasure_difficulty", self.erasure_difficulty),
-            ("forensic_value", self.forensic_value),
-        ):
-            if not isinstance(value, Fraction):
-                raise TypeError(f"{name} must be fractions.Fraction")
-            if not Fraction(0) <= value <= Fraction(1):
-                raise ValueError(f"{name} must be between 0 and 1")
+from .catalog import CATALOG_VERSION, ExpectedArtifact, catalog_for_profile
 
 
 class ArtifactStatus(str, Enum):
@@ -49,10 +22,91 @@ class ArtifactStatus(str, Enum):
     OUT_OF_SCOPE = "out_of_scope"
 
 
+class ObservationReason(str, Enum):
+    CONDITIONS_UNVERIFIED = "conditions_unverified"
+    CATALOG_SCOPE_UNVERIFIED = "catalog_scope_unverified"
+    NOT_COLLECTED = "not_collected"
+    RETENTION_GAP = "retention_gap"
+    ACQUISITION_GAP = "acquisition_gap"
+    PARSER_FAILURE = "parser_failure"
+    AMBIGUOUS = "ambiguous"
+    NOT_APPLICABLE = "not_applicable"
+
+
+@dataclass(frozen=True)
+class AnalysisContext:
+    """Declared system, time interval, and acquired scope for one analysis."""
+
+    os_profile: str
+    os_release: str
+    system_build: str | None
+    scope: str
+    interval_start: datetime
+    interval_end: datetime
+    acquisition_ref: str
+
+    def __post_init__(self) -> None:
+        for name in ("os_profile", "os_release", "scope", "acquisition_ref"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+        if self.system_build is not None and (
+            not isinstance(self.system_build, str) or not self.system_build.strip()
+        ):
+            raise ValueError("system_build must be a non-empty string or None")
+        if not isinstance(self.interval_start, datetime) or not isinstance(
+            self.interval_end, datetime
+        ):
+            raise TypeError("analysis interval endpoints must be datetime values")
+        start = _as_utc(self.interval_start, "interval_start")
+        end = _as_utc(self.interval_end, "interval_end")
+        if start >= end:
+            raise ValueError("interval_start must be earlier than interval_end")
+        object.__setattr__(self, "os_profile", self.os_profile.strip().lower())
+        object.__setattr__(self, "os_release", self.os_release.strip())
+        object.__setattr__(self, "scope", self.scope.strip())
+        object.__setattr__(self, "acquisition_ref", self.acquisition_ref.strip())
+        object.__setattr__(self, "system_build", self.system_build.strip() if self.system_build else None)
+        object.__setattr__(self, "interval_start", start)
+        object.__setattr__(self, "interval_end", end)
+
+
+@dataclass(frozen=True)
+class ConditionEvidence:
+    """Analyst reference and declared validity interval for one condition."""
+
+    evidence_ref: str
+    valid_from: datetime
+    valid_until: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.evidence_ref, str) or not self.evidence_ref.strip():
+            raise ValueError("condition evidence_ref must be a non-empty string")
+        if not isinstance(self.valid_from, datetime) or not isinstance(
+            self.valid_until, datetime
+        ):
+            raise TypeError("condition validity endpoints must be datetime values")
+        start = _as_utc(self.valid_from, "condition valid_from")
+        end = _as_utc(self.valid_until, "condition valid_until")
+        if start >= end:
+            raise ValueError("condition valid_from must be earlier than valid_until")
+        object.__setattr__(self, "evidence_ref", self.evidence_ref.strip())
+        object.__setattr__(self, "valid_from", start)
+        object.__setattr__(self, "valid_until", end)
+
+    def covers(self, context: AnalysisContext) -> bool:
+        return (
+            self.valid_from <= context.interval_start
+            and self.valid_until >= context.interval_end
+        )
+
+
 @dataclass(frozen=True)
 class Observation:
     status: ArtifactStatus
-    explanation: str | None = None
+    evidence_ref: str | None = None
+    reason: ObservationReason | None = None
+    condition_evidence: tuple[tuple[str, ConditionEvidence], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -64,131 +118,49 @@ class SilenceRecord:
 
 @dataclass(frozen=True)
 class SilenceAnalysisResult:
-    """Exact descriptive metrics and a digest of the complete analysis input.
-
-    ``selectivity_score`` is ``None`` unless both difficult and easy artifact
-    groups have at least one in-scope, known observation.
-    """
-
-    silence_score: Fraction | None
-    selectivity_score: Fraction | None
-    erasure_sophistication: Fraction | None
+    context: AnalysisContext
+    catalog_version: str
     expected_count: int
-    known_count: int
+    present_count: int
     confirmed_absent_count: int
     unknown_count: int
     out_of_scope_count: int
     audit_hash: str
     records: tuple[SilenceRecord, ...]
-    top_investigation_hints: tuple[str, ...]
+
+    @property
+    def known_count(self) -> int:
+        return self.present_count + self.confirmed_absent_count
 
 
-_WINDOWS_ARTIFACTS: dict[str, tuple[ExpectedArtifact, ...]] = {
-    "process_execution": (
-        ExpectedArtifact("prefetch_entry", Fraction(8, 10), Fraction(9, 10),
-                         r"dir C:\Windows\Prefetch\*.pf"),
-        ExpectedArtifact("shimcache_entry", Fraction(7, 10), Fraction(8, 10),
-                         r"reg query HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache"),
-        ExpectedArtifact("amcache_entry", Fraction(6, 10), Fraction(8, 10),
-                         r"C:\Windows\AppCompat\Programs\Amcache.hve"),
-        ExpectedArtifact("event_4688", Fraction(3, 10), Fraction(7, 10),
-                         "Get-WinEvent -FilterHashtable @{LogName='Security';Id=4688}"),
-    ),
-    "network_connection": (
-        ExpectedArtifact("dns_cache_entry", Fraction(2, 10), Fraction(6, 10),
-                         "ipconfig /displaydns"),
-        ExpectedArtifact("firewall_log", Fraction(4, 10), Fraction(7, 10),
-                         "Get-WinEvent -FilterHashtable @{LogName='Security';Id=5156}"),
-        ExpectedArtifact("netflow_record", Fraction(5, 10), Fraction(8, 10),
-                         "Get-NetTCPConnection"),
-    ),
-    "file_creation": (
-        ExpectedArtifact("mft_entry", Fraction(9, 10), Fraction(9, 10),
-                         "MFTECmd.exe -f '$MFT'"),
-        ExpectedArtifact("usnjrnl_entry", Fraction(8, 10), Fraction(8, 10),
-                         "MFTECmd.exe -f '$UsnJrnl:$J'"),
-        ExpectedArtifact("lnk_file", Fraction(3, 10), Fraction(5, 10),
-                         r"dir %APPDATA%\Microsoft\Windows\Recent\*.lnk"),
-    ),
-    "service_installation": (
-        ExpectedArtifact("event_7045", Fraction(4, 10), Fraction(9, 10),
-                         "Get-WinEvent -FilterHashtable @{LogName='System';Id=7045}"),
-        ExpectedArtifact("registry_service", Fraction(6, 10), Fraction(8, 10),
-                         r"reg query HKLM\SYSTEM\CurrentControlSet\Services"),
-        ExpectedArtifact("prefetch_entry", Fraction(8, 10), Fraction(7, 10),
-                         r"dir C:\Windows\Prefetch\*.pf"),
-    ),
-    "user_login": (
-        ExpectedArtifact("event_4624", Fraction(3, 10), Fraction(8, 10),
-                         "Get-WinEvent -FilterHashtable @{LogName='Security';Id=4624}"),
-        ExpectedArtifact("event_4634", Fraction(3, 10), Fraction(7, 10),
-                         "Get-WinEvent -FilterHashtable @{LogName='Security';Id=4634}"),
-        ExpectedArtifact("ntuser_dat", Fraction(7, 10), Fraction(6, 10),
-                         r"dir C:\Users\*\NTUSER.DAT /A:H"),
-    ),
-}
+class AdversarialSilenceAnalyzer:
+    """Build an auditable matrix for source-backed, conditional expectations.
 
-_LINUX_ARTIFACTS: dict[str, tuple[ExpectedArtifact, ...]] = {
-    "process_execution": (
-        ExpectedArtifact("bash_history", Fraction(2, 10), Fraction(6, 10),
-                         "cat ~/.bash_history"),
-        ExpectedArtifact("syslog_entry", Fraction(4, 10), Fraction(7, 10),
-                         "grep <pid> /var/log/syslog"),
-        ExpectedArtifact("proc_accounting", Fraction(5, 10), Fraction(7, 10),
-                         "lastcomm"),
-        ExpectedArtifact("audit_log", Fraction(5, 10), Fraction(9, 10),
-                         "ausearch -sc execve"),
-    ),
-    "network_connection": (
-        ExpectedArtifact("netstat_entry", Fraction(1, 10), Fraction(5, 10),
-                         "netstat -antp"),
-        ExpectedArtifact("iptables_log", Fraction(4, 10), Fraction(7, 10),
-                         "grep DROP /var/log/syslog"),
-        ExpectedArtifact("pcap_fragment", Fraction(6, 10), Fraction(9, 10),
-                         "tcpdump -r capture.pcap"),
-    ),
-    "file_creation": (
-        ExpectedArtifact("inode_entry", Fraction(8, 10), Fraction(8, 10),
-                         "stat <file>"),
-        ExpectedArtifact("ext4_journal", Fraction(9, 10), Fraction(9, 10),
-                         "debugfs -R 'logdump' /dev/sda1"),
-        ExpectedArtifact("fam_inotify_log", Fraction(3, 10), Fraction(5, 10),
-                         "inotifywait -m /path"),
-    ),
-}
-
-_PROFILES: Mapping[str, Mapping[str, tuple[ExpectedArtifact, ...]]] = {
-    "windows": _WINDOWS_ARTIFACTS,
-    "linux": _LINUX_ARTIFACTS,
-}
-
-
-class AdversarialSilenceDetector:
-    """Compare known artifact observations against the seed expectation table.
-
-    Metrics describe the supplied observations only. This class has no verdict
-    thresholds and does not equate a missing artifact with deliberate erasure.
+    A ``CONFIRMED_ABSENT`` observation requires both a reference to the
+    acquired source/query and references supporting every catalog condition.
+    These references are identifiers/locators, not a substitute for reviewing
+    the underlying evidence.
     """
 
-    def __init__(self, os_profile: str = "windows") -> None:
-        if not isinstance(os_profile, str):
-            raise TypeError("os_profile must be str")
-        profile = os_profile.strip().lower()
-        if profile not in _PROFILES:
-            raise ValueError(f"unsupported OS profile: {os_profile!r}")
-        self._os_profile = profile
-        self._kb = _PROFILES[profile]
+    def __init__(self, context: AnalysisContext) -> None:
+        if not isinstance(context, AnalysisContext):
+            raise TypeError("context must be an AnalysisContext")
+        self._context = context
+        self._catalog = catalog_for_profile(context.os_profile)
+        self._entries_by_key = {
+            (entry.action, entry.artifact_type): entry for entry in self._catalog
+        }
         self._actions: set[str] = set()
         self._observations: dict[tuple[str, str], Observation] = {}
 
     def register_primary_action(self, action: str) -> None:
-        """Register an action whose expected secondary artifacts are analyzed."""
+        """Include a cataloged activity in the evidence matrix."""
         if not isinstance(action, str):
             raise TypeError("action must be str")
-        if action not in self._kb:
+        available = sorted({entry.action for entry in self._catalog})
+        if action not in available:
             raise ValueError(
-                f"unknown action {action!r} for {self._os_profile}; "
-                f"known actions: {', '.join(sorted(self._kb))}"
+                f"unknown action {action!r}; known actions: {', '.join(available)}"
             )
         self._actions.add(action)
 
@@ -197,145 +169,198 @@ class AdversarialSilenceDetector:
         action: str,
         artifact_type: str,
         status: ArtifactStatus | str,
-        explanation: str | None = None,
+        *,
+        evidence_ref: str | None = None,
+        condition_evidence: Mapping[str, ConditionEvidence] | None = None,
+        reason: ObservationReason | str | None = None,
     ) -> None:
-        """Record one explicit observation for an expected artifact.
+        """Record status and source references for one expected artifact.
 
-        Repeating the same observation is idempotent. Conflicting observations
-        for the same action/artifact pair raise ``ValueError``.
+        ``condition_evidence`` maps each catalog condition to an analyst-
+        maintained reference and declared validity interval. The interval must
+        cover the complete analysis interval. Do not put raw evidence or
+        sensitive content here.
         """
         if not isinstance(action, str) or not isinstance(artifact_type, str):
             raise TypeError("action and artifact_type must be str")
-        if explanation is not None and not isinstance(explanation, str):
-            raise TypeError("explanation must be str or None")
         if action not in self._actions:
             raise ValueError(f"register action {action!r} before its observations")
-        expected_types = {item.artifact_type for item in self._kb[action]}
-        if artifact_type not in expected_types:
-            raise ValueError(
-                f"artifact {artifact_type!r} is not expected for action {action!r}"
-            )
+        key = (action, artifact_type)
+        entry = self._entries_by_key.get(key)
+        if entry is None:
+            raise ValueError(f"artifact {artifact_type!r} is not cataloged for {action!r}")
         try:
             parsed_status = ArtifactStatus(status)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"invalid artifact status: {status!r}") from exc
-        observation = Observation(parsed_status, explanation)
-        key = (action, artifact_type)
+        if reason is None:
+            parsed_reason = None
+        else:
+            try:
+                parsed_reason = ObservationReason(reason)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"invalid observation reason: {reason!r}") from exc
+        if evidence_ref is not None and (not isinstance(evidence_ref, str) or not evidence_ref):
+            raise ValueError("evidence_ref must be a non-empty reference or None")
+        if condition_evidence is None:
+            conditions: dict[str, str] = {}
+        elif not isinstance(condition_evidence, Mapping):
+            raise TypeError("condition_evidence must map conditions to ConditionEvidence")
+        else:
+            conditions = dict(condition_evidence)
+        if any(
+            not isinstance(name, str) or not isinstance(evidence, ConditionEvidence)
+            for name, evidence in conditions.items()
+        ):
+            raise TypeError("condition names must be strings and values ConditionEvidence")
+        unknown_conditions = set(conditions) - set(entry.required_conditions)
+        if unknown_conditions:
+            raise ValueError(f"unrecognized catalog conditions: {sorted(unknown_conditions)}")
+
+        if parsed_status in {ArtifactStatus.PRESENT, ArtifactStatus.CONFIRMED_ABSENT}:
+            if evidence_ref is None:
+                raise ValueError(f"{parsed_status.value} requires an evidence_ref")
+            if parsed_reason is not None:
+                raise ValueError("known observations cannot have an unknown/out-of-scope reason")
+        if parsed_status is ArtifactStatus.CONFIRMED_ABSENT:
+            if not entry.supports_os_release(self._context.os_release):
+                raise ValueError(
+                    f"catalog sources do not document {self._context.os_release!r} "
+                    f"for {artifact_type!r}"
+                )
+            missing = set(entry.required_conditions) - set(conditions)
+            if missing:
+                raise ValueError(
+                    "confirmed absence requires evidence for every applicability condition; "
+                    f"missing: {sorted(missing)}"
+                )
+            uncovered = sorted(
+                name for name, evidence in conditions.items()
+                if not evidence.covers(self._context)
+            )
+            if uncovered:
+                raise ValueError(
+                    "condition evidence does not cover the complete analysis interval; "
+                    f"uncovered: {uncovered}"
+                )
+        if parsed_status is ArtifactStatus.OUT_OF_SCOPE:
+            if parsed_reason is not ObservationReason.NOT_APPLICABLE or evidence_ref is None:
+                raise ValueError("out_of_scope requires reason='not_applicable' and evidence_ref")
+        if parsed_status is ArtifactStatus.UNKNOWN and parsed_reason is ObservationReason.NOT_APPLICABLE:
+            raise ValueError("use out_of_scope when non-applicability is established")
+
+        observation = Observation(
+            status=parsed_status,
+            evidence_ref=evidence_ref,
+            reason=parsed_reason,
+            condition_evidence=tuple(sorted(conditions.items())),
+        )
         previous = self._observations.get(key)
         if previous is not None and previous != observation:
             raise ValueError(f"conflicting observations for {action}/{artifact_type}")
         self._observations[key] = observation
 
     def analyze(self) -> SilenceAnalysisResult:
-        """Compute exact, descriptive metrics over in-scope known observations."""
+        """Return the evidence matrix, coverage counts, and deterministic digest."""
         records = tuple(
             SilenceRecord(
-                action=action,
-                expected_artifact=artifact,
+                action=entry.action,
+                expected_artifact=entry,
                 observation=self._observations.get(
-                    (action, artifact.artifact_type), Observation(ArtifactStatus.UNKNOWN)
+                    (entry.action, entry.artifact_type),
+                    Observation(
+                        status=ArtifactStatus.UNKNOWN,
+                        reason=(
+                            ObservationReason.CONDITIONS_UNVERIFIED
+                            if entry.supports_os_release(self._context.os_release)
+                            else ObservationReason.CATALOG_SCOPE_UNVERIFIED
+                        ),
+                    ),
                 ),
             )
-            for action in sorted(self._actions)
-            for artifact in sorted(self._kb[action], key=lambda item: item.artifact_type)
+            for entry in sorted(
+                (item for item in self._catalog if item.action in self._actions),
+                key=lambda item: (item.action, item.artifact_type),
+            )
         )
-        scored = [
-            record for record in records
-            if record.observation.status in {
-                ArtifactStatus.PRESENT, ArtifactStatus.CONFIRMED_ABSENT
-            }
-        ]
-        denominator = sum(
-            (record.expected_artifact.forensic_value for record in scored), Fraction(0)
-        )
-        absent = [
-            record for record in scored
-            if record.observation.status is ArtifactStatus.CONFIRMED_ABSENT
-        ]
-        silence_score = (
-            sum((r.expected_artifact.forensic_value for r in absent), Fraction(0)) / denominator
-            if denominator else None
-        )
-
-        hard = [r for r in scored if r.expected_artifact.erasure_difficulty > Fraction(1, 2)]
-        easy = [r for r in scored if r.expected_artifact.erasure_difficulty <= Fraction(1, 2)]
-        hard_absent = sum(
-            r.observation.status is ArtifactStatus.CONFIRMED_ABSENT for r in hard
-        )
-        easy_absent = sum(
-            r.observation.status is ArtifactStatus.CONFIRMED_ABSENT for r in easy
-        )
-        selectivity_score = None
-        if hard and easy:
-            hard_rate = Fraction(hard_absent, len(hard))
-            easy_rate = Fraction(easy_absent, len(easy))
-            selectivity_score = max(hard_rate - easy_rate, Fraction(0))
-
-        erasure_sophistication = (
-            sum((r.expected_artifact.erasure_difficulty for r in absent), Fraction(0))
-            / len(absent)
-            if absent else None
-        )
-        hints = _build_hints(absent, self._os_profile)
-        audit_hash = _compute_analysis_hash(self._os_profile, records)
-        status_counts = {
+        counts = {
             status: sum(record.observation.status is status for record in records)
             for status in ArtifactStatus
         }
+        digest = _compute_analysis_hash(self._context, records)
         return SilenceAnalysisResult(
-            silence_score=silence_score,
-            selectivity_score=selectivity_score,
-            erasure_sophistication=erasure_sophistication,
+            context=self._context,
+            catalog_version=CATALOG_VERSION,
             expected_count=len(records),
-            known_count=len(scored),
-            confirmed_absent_count=len(absent),
-            unknown_count=status_counts[ArtifactStatus.UNKNOWN],
-            out_of_scope_count=status_counts[ArtifactStatus.OUT_OF_SCOPE],
-            audit_hash=audit_hash,
+            present_count=counts[ArtifactStatus.PRESENT],
+            confirmed_absent_count=counts[ArtifactStatus.CONFIRMED_ABSENT],
+            unknown_count=counts[ArtifactStatus.UNKNOWN],
+            out_of_scope_count=counts[ArtifactStatus.OUT_OF_SCOPE],
+            audit_hash=digest,
             records=records,
-            top_investigation_hints=hints,
         )
 
 
-def _build_hints(
-    absent_records: list[SilenceRecord], os_profile: str
-) -> tuple[str, ...]:
-    sorted_records = sorted(
-        absent_records,
-        key=lambda record: (
-            -record.expected_artifact.forensic_value,
-            record.action,
-            record.expected_artifact.artifact_type,
-        ),
-    )
-    return tuple(
-        f"[{os_profile.upper()}] CONFIRMED_ABSENT: {record.expected_artifact.artifact_type} "
-        f"(research forensic_value={_percent(record.expected_artifact.forensic_value)}%, "
-        f"research erasure_difficulty={_percent(record.expected_artifact.erasure_difficulty)}%). "
-        f"Suggested check: {record.expected_artifact.detection_command}"
-        for record in sorted_records[:5]
-    )
+def _entry_payload(entry: ExpectedArtifact) -> dict[str, object]:
+    return {
+        "action": entry.action,
+        "artifact_type": entry.artifact_type,
+        "description": entry.description,
+        "scope": entry.scope,
+        "required_conditions": list(entry.required_conditions),
+        "retention": entry.retention,
+        "interpretation_limit": entry.interpretation_limit,
+        "source_refs": [list(item) for item in entry.source_refs],
+        "documented_os_release_prefix": entry.documented_os_release_prefix,
+    }
 
 
-def _percent(value: Fraction) -> int:
-    return value.numerator * 100 // value.denominator
+def _as_utc(value: datetime, field_name: str) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must include a timezone")
+    return value.astimezone(timezone.utc)
+
+
+def _context_payload(context: AnalysisContext) -> dict[str, str | None]:
+    return {
+        "os_profile": context.os_profile,
+        "os_release": context.os_release,
+        "system_build": context.system_build,
+        "scope": context.scope,
+        "interval_start": context.interval_start.isoformat(timespec="microseconds"),
+        "interval_end": context.interval_end.isoformat(timespec="microseconds"),
+        "acquisition_ref": context.acquisition_ref,
+    }
+
+
+def _condition_payload(evidence: ConditionEvidence) -> dict[str, str]:
+    return {
+        "evidence_ref": evidence.evidence_ref,
+        "valid_from": evidence.valid_from.isoformat(timespec="microseconds"),
+        "valid_until": evidence.valid_until.isoformat(timespec="microseconds"),
+    }
 
 
 def _compute_analysis_hash(
-    os_profile: str, records: tuple[SilenceRecord, ...]
+    context: AnalysisContext, records: tuple[SilenceRecord, ...]
 ) -> str:
     payload = {
-        "schema": "siberian-adversarial-silence-v1",
-        "os_profile": os_profile,
+        "schema": "siberian-evidence-matrix-v1",
+        "catalog_version": CATALOG_VERSION,
+        "context": _context_payload(context),
         "records": [
             {
-                "action": record.action,
-                "artifact_type": record.expected_artifact.artifact_type,
-                "erasure_difficulty": str(record.expected_artifact.erasure_difficulty),
-                "forensic_value": str(record.expected_artifact.forensic_value),
-                "detection_command": record.expected_artifact.detection_command,
+                "expectation": _entry_payload(record.expected_artifact),
                 "status": record.observation.status.value,
-                "explanation": record.observation.explanation,
+                "evidence_ref": record.observation.evidence_ref,
+                "reason": (
+                    record.observation.reason.value
+                    if record.observation.reason is not None else None
+                ),
+                "condition_evidence": [
+                    [name, _condition_payload(evidence)]
+                    for name, evidence in record.observation.condition_evidence
+                ],
             }
             for record in records
         ],

@@ -1,18 +1,24 @@
-"""SIBERIAN: deterministic descriptive analysis of artifact absence."""
+"""SIBERIAN: deterministic evidence matrices for conditional artifact absence."""
 
 from .adversarial_silence import (
-    AdversarialSilenceDetector,
+    AnalysisContext,
+    AdversarialSilenceAnalyzer,
     ArtifactStatus,
+    ConditionEvidence,
     ExpectedArtifact,
+    ObservationReason,
     Observation,
     SilenceAnalysisResult,
     SilenceRecord,
 )
 
 __all__ = [
-    "AdversarialSilenceDetector",
+    "AnalysisContext",
+    "AdversarialSilenceAnalyzer",
     "ArtifactStatus",
+    "ConditionEvidence",
     "ExpectedArtifact",
+    "ObservationReason",
     "Observation",
     "SilenceAnalysisResult",
     "SilenceRecord",

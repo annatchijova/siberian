@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "siberian-adversarial-silence"
 version = "0.1.0"
-description = "Deterministic descriptive analysis of forensic artifact absence"
+description = "Deterministic contextual analysis of forensic artifact absence"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"

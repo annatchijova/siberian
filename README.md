@@ -2,31 +2,52 @@
 
 [English](README.md) · [Español](README_ES.md) · **[Technical README](TECHNICAL_README.md)**
 
+<p align="center">
+  <img src="visual/logo.png" alt="SIBERIAN: Adversarial Silence Analysis — Evidence is not only what remains." width="100%">
+</p>
+
 ## Adversarial Silence Analysis
 
 **What disappeared can be evidence too.**
 
 Digital investigations usually begin with artifacts that survived collection. SIBERIAN is for the complementary question: given an activity and a collection scope, what should have been observable, and what might explain the artifacts that are missing?
 
-The first Python analysis library is now ported. It compares confirmed absences with the other artifacts expected for an action. It reports exact descriptive metrics and a hash of the analysis inputs; it does **not** classify intent or produce a verdict.
+The first Python library builds a contextual evidence matrix for documented Windows artifact expectations. It records presence, confirmed absence, uncertainty, and out-of-scope status with source references. It reports coverage counts and a deterministic hash; it does **not** calculate suspicion scores, classify intent, or produce a verdict.
 
 ```python
-from siberian import AdversarialSilenceDetector, ArtifactStatus
+from datetime import datetime, timezone
+from siberian import AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus, ConditionEvidence
 
-analysis = AdversarialSilenceDetector(os_profile="windows")
+context = AnalysisContext(
+    os_profile="windows", os_release="Windows 10", system_build="recorded-build",
+    scope="host:case-123 / Security.evtx",
+    interval_start=datetime(2026, 10, 1, tzinfo=timezone.utc),
+    interval_end=datetime(2026, 10, 2, tzinfo=timezone.utc),
+    acquisition_ref="case://acquisition/security.evtx",
+)
+analysis = AdversarialSilenceAnalyzer(context)
 analysis.register_primary_action("process_execution")
 analysis.register_observation(
-    "process_execution", "prefetch_entry", ArtifactStatus.CONFIRMED_ABSENT,
-    explanation="Checked in the acquired Prefetch directory",
-)
-analysis.register_observation(
-    "process_execution", "event_4688", ArtifactStatus.PRESENT,
+    "process_execution", "security_event_4688", ArtifactStatus.CONFIRMED_ABSENT,
+    evidence_ref="case://acquisition/security.evtx/query-4688",
+    condition_evidence={
+        "audit_process_creation_enabled_for_interval": ConditionEvidence(
+            "case://policy/auditpol-2026-10-01",
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 10, 2, tzinfo=timezone.utc),
+        ),
+        "security_log_acquired_and_covers_interval": ConditionEvidence(
+            "case://acquisition/security.evtx/coverage",
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 10, 2, tzinfo=timezone.utc),
+        ),
+    },
 )
 result = analysis.analyze()
-print(result.selectivity_score, result.known_count, result.audit_hash)
+print(result.confirmed_absent_count, result.unknown_count, result.audit_hash)
 ```
 
-Unreported artifacts remain `UNKNOWN`; they are excluded from the metrics. Absence alone does not establish deletion, tampering, attribution, or intent. The technical design, formulas, and limits are described in the prominent **[Technical README](TECHNICAL_README.md)**.
+Unreported artifacts remain `UNKNOWN`. `CONFIRMED_ABSENT` requires a reference to the acquired source and evidence for every applicability condition in the catalog entry. A reference does not validate itself: analysts must inspect the underlying material. Absence alone does not establish deletion, tampering, attribution, or intent. See the **[Technical README](TECHNICAL_README.md)** and [catalog review](docs/CATALOG_REVIEW.md).
 
 ## What makes the question useful
 
@@ -34,9 +55,9 @@ Unreported artifacts remain `UNKNOWN`; they are excluded from the metrics. Absen
 | --- | --- |
 | Lists artifacts that were found | Also models expected artifacts and their observation status |
 | Can treat a missing record as a gap | Separates present, confirmed absent, unknown, and out of scope |
-| May collapse the result to one explanation | Returns descriptive metrics without an intent verdict |
+| May collapse the result to one explanation | Reports coverage and source-linked observations without an intent verdict |
 
-The current library implements the observation states and descriptive metrics. It does not yet model rival hypotheses or issue `PASS` / `WARN` / `ABSTAIN` outcomes.
+The current library implements observation states, conditional expectations, provenance references, coverage counts, and a deterministic digest. It does not yet model rival hypotheses or issue `PASS` / `WARN` / `ABSTAIN` outcomes.
 
 ## Project status and origin
 
@@ -46,11 +67,11 @@ The VIGÍA detector is a research starting point, not a validated standalone pro
 
 ## Current package and next work
 
-- `siberian/`: dependency-free analysis library and Windows/Linux seed catalogues.
+- `siberian/`: dependency-free analysis library and source-linked conditional Windows catalog.
 - `docs/`: source provenance, technical behavior, and the language decision.
 - [Construction levels](docs/NIVELES.md): destination-driven path from a contextualized analysis core to calibrated, independently verifiable forensic reports.
-- Next: close Level 1 by validating artifact expectations and their applicability conditions.
+- Next: complete the Level 1 catalog matrix across supported Windows versions and configurations, then validate it empirically.
 
-There is no CLI, calibrated model, or validation corpus yet. The descriptive weights are inherited research assumptions, not probabilities. Licensed under Apache-2.0.
+There is no CLI, calibrated model, or validation corpus yet. There are no weighted suspicion metrics. Licensed under Apache-2.0.
 
 > Evidence is not only what remains.

@@ -12,8 +12,8 @@ Este plan avanza hacia el producto completo. Cada nivel deja una herramienta út
 
 - `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN` y `OUT_OF_SCOPE` nunca se confunden.
 - La ausencia solo se analiza si la expectativa aplica al sistema, la acción, el período y el alcance adquirido.
-- Las métricas usan aritmética exacta; cada resultado identifica el esquema, el catálogo y la versión de código que lo produjo.
-- Una métrica descriptiva no se llama probabilidad ni demuestra borrado, atribución o intención.
+- Las salidas describen observaciones y cobertura; no se publican scores sin validación empírica.
+- Cada resultado identifica el esquema y la versión del catálogo; el digest determinista no prueba la veracidad de las fuentes.
 - Las explicaciones benignas y los límites de adquisición quedan visibles junto a la hipótesis adversarial.
 - El cálculo decisorio es determinista y no delega el veredicto a un LLM.
 - SIBERIAN no ejecuta comandos de análisis sobre el sistema investigado ni modifica evidencia. Los adaptadores importan datos de herramientas forenses.
@@ -21,23 +21,24 @@ Este plan avanza hacia el producto completo. Cada nivel deja una herramienta út
 
 ## Estado actual
 
-El repo contiene una primera biblioteca Python derivada de `vigia/patterns/adversarial_silence.py`. Ya distingue estados explícitos y calcula métricas descriptivas por acción. Aún usa un catálogo heredado sin validación por versión/configuración de sistema; no tiene formato de expediente, CLI, hipótesis rivales, modelo calibrado ni corpus de evaluación. **Esto es la base de trabajo, todavía no un nivel terminado.**
+El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_silence.py`. Distingue estados y registra referencias de evidencia. El catálogo heredado fue reducido a cinco expectativas condicionales de Windows con documentación primaria; ya no calcula métricas ponderadas. Falta la matriz por versión/configuración y validación empírica. No tiene formato de expediente, CLI, hipótesis rivales, modelo calibrado ni corpus de evaluación. **Esto es la base de trabajo, todavía no un nivel terminado.**
 
 ## Nivel 1 — Núcleo descriptivo contextualizado
 
-**Resultado útil:** un analista puede comparar artefactos esperados y observaciones confirmadas para una acción y un contexto definidos, desde Python, y obtener un resumen exacto con cobertura y procedencia.
+**Resultado útil:** un analista puede declarar actividades y observaciones respaldadas por fuentes, y obtener desde Python una matriz contextual con cobertura y procedencia.
 
-**Construir:** catálogo con fuente, versión y condiciones de aplicabilidad; modelos tipados de acción, artefacto, adquisición y estado; métricas descriptivas; validación de entradas; hash determinista sobre la entrada y el resultado; API estable de biblioteca.
+**Construir:** catálogo con fuentes, versión y condiciones de aplicabilidad; modelo explícito de contexto de sistema y adquisición; estados tipados; validación de entradas; digest determinista de contexto, catálogo y observaciones; API estable de biblioteca.
 
 **Se considera completo cuando:**
 
-- cada artefacto del catálogo declara plataforma/versión/configuración, período de supervivencia esperado y fuente verificable;
-- desconocidos, no adquiridos, inaplicables y ausencias confirmadas producen conteos y cálculos distintos;
+- cada artefacto del catálogo declara plataforma/versión/configuración admitida, condiciones necesarias, límites temporales y fuente verificable;
+- desconocidos, no adquiridos, inaplicables y ausencias confirmadas producen conteos distintos;
 - duplicados o datos incompatibles se rechazan con errores precisos;
-- la misma entrada, catálogo y versión producen el mismo resultado y hash;
-- un informe explica el denominador y qué observaciones quedaron excluidas.
+- cada ausencia confirmada exige referencia a la fuente adquirida y evidencia temporal de sus condiciones que cubra todo el intervalo analizado;
+- la misma entrada, catálogo y versión producen el mismo resultado y digest;
+- el resumen muestra cobertura y cada observación, sin convertir conteos en sospecha o intención.
 
-La biblioteca actual es una base para este nivel. No se da por terminado hasta que el catálogo y sus condiciones estén respaldados.
+La biblioteca actual aporta el modelo condicional inicial. El Nivel 1 no se da por terminado hasta que exista una matriz de aplicabilidad sustentada para las versiones/configuraciones admitidas y evidencia empírica de supervivencia y límites.
 
 ## Nivel 2 — Expediente reproducible y CLI
 

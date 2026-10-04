@@ -2,31 +2,52 @@
 
 [English](README.md) · **Español** · [README técnico](TECHNICAL_README.md)
 
+<p align="center">
+  <img src="visual/logo.png" alt="SIBERIAN: análisis de silencio adversarial — la evidencia no es solamente lo que permanece." width="100%">
+</p>
+
 ## Análisis de silencio adversarial
 
 **Lo que desapareció también puede ser evidencia.**
 
 Las investigaciones digitales suelen empezar por los artefactos que sobrevivieron a la adquisición. SIBERIAN aborda la pregunta complementaria: dado un hecho y el alcance de la adquisición, ¿qué artefactos deberían haberse podido observar y qué podría explicar los que faltan?
 
-La primera biblioteca de análisis en Python ya está portada. Compara las ausencias confirmadas con los demás artefactos esperados para una acción. Devuelve métricas descriptivas exactas y un hash de las entradas del análisis; no clasifica intención ni produce un veredicto.
+La primera biblioteca en Python construye una matriz contextual de expectativas documentadas para Windows. Registra presencia, ausencia confirmada, incertidumbre y estado fuera de alcance con referencias a fuentes. Devuelve conteos de cobertura y un hash determinista; no calcula scores de sospecha, clasifica intención ni produce un veredicto.
 
 ```python
-from siberian import AdversarialSilenceDetector, ArtifactStatus
+from datetime import datetime, timezone
+from siberian import AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus, ConditionEvidence
 
-analysis = AdversarialSilenceDetector(os_profile="windows")
+context = AnalysisContext(
+    os_profile="windows", os_release="Windows 10", system_build="build-registrado",
+    scope="host:caso-123 / Security.evtx",
+    interval_start=datetime(2026, 10, 1, tzinfo=timezone.utc),
+    interval_end=datetime(2026, 10, 2, tzinfo=timezone.utc),
+    acquisition_ref="case://adquisicion/security.evtx",
+)
+analysis = AdversarialSilenceAnalyzer(context)
 analysis.register_primary_action("process_execution")
 analysis.register_observation(
-    "process_execution", "prefetch_entry", ArtifactStatus.CONFIRMED_ABSENT,
-    explanation="Verificado en el directorio Prefetch adquirido",
-)
-analysis.register_observation(
-    "process_execution", "event_4688", ArtifactStatus.PRESENT,
+    "process_execution", "security_event_4688", ArtifactStatus.CONFIRMED_ABSENT,
+    evidence_ref="case://adquisicion/security.evtx/query-4688",
+    condition_evidence={
+        "audit_process_creation_enabled_for_interval": ConditionEvidence(
+            "case://politica/auditpol-2026-10-01",
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 10, 2, tzinfo=timezone.utc),
+        ),
+        "security_log_acquired_and_covers_interval": ConditionEvidence(
+            "case://adquisicion/security.evtx/cobertura",
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 10, 2, tzinfo=timezone.utc),
+        ),
+    },
 )
 result = analysis.analyze()
-print(result.selectivity_score, result.known_count, result.audit_hash)
+print(result.confirmed_absent_count, result.unknown_count, result.audit_hash)
 ```
 
-Los artefactos sin registrar quedan como `UNKNOWN` y no entran en las métricas. La ausencia por sí sola no demuestra borrado, manipulación, atribución ni intención. El diseño técnico, las fórmulas y los límites están en el **[README técnico](TECHNICAL_README.md)**.
+Los artefactos sin registrar quedan como `UNKNOWN`. `CONFIRMED_ABSENT` requiere una referencia a la fuente adquirida y evidencia para cada condición de aplicabilidad del catálogo. La referencia no se valida sola: el analista debe revisar el material. La ausencia por sí sola no demuestra borrado, manipulación, atribución ni intención. Ver **[README técnico](TECHNICAL_README.md)** y [revisión del catálogo](docs/CATALOG_REVIEW.md).
 
 ## Qué aporta la pregunta
 
@@ -34,9 +55,9 @@ Los artefactos sin registrar quedan como `UNKNOWN` y no entran en las métricas.
 | --- | --- |
 | Enumera los artefactos encontrados | También modela los esperados y su estado de observación |
 | Puede tratar un registro faltante como un vacío | Separa presente, ausencia confirmada, desconocido y fuera de alcance |
-| Puede reducir el resultado a una explicación | Devuelve métricas descriptivas, sin veredicto de intención |
+| Puede reducir el resultado a una explicación | Informa cobertura y observaciones con fuentes, sin veredicto de intención |
 
-La biblioteca actual implementa estados de observación y métricas descriptivas. Todavía no modela hipótesis rivales ni emite resultados `PASS` / `WARN` / `ABSTAIN`.
+La biblioteca actual implementa estados de observación, expectativas condicionales, referencias de procedencia, conteos de cobertura y un digest determinista. Todavía no modela hipótesis rivales ni emite resultados `PASS` / `WARN` / `ABSTAIN`.
 
 ## Estado y origen
 
@@ -46,11 +67,11 @@ El detector de VIGÍA es un punto de partida de investigación, no un producto i
 
 ## Paquete actual y próximos pasos
 
-- `siberian/`: biblioteca de análisis sin dependencias y catálogos iniciales para Windows/Linux.
+- `siberian/`: biblioteca de análisis sin dependencias y catálogo condicional de Windows con fuentes.
 - `docs/`: procedencia, comportamiento técnico y decisión de lenguaje.
 - [Niveles de construcción](docs/NIVELES.md): camino hacia informes forenses calibrados y verificables por terceros, en etapas útiles e íntegras.
-- Próximo: cerrar el Nivel 1 validando las expectativas de artefactos y sus condiciones de aplicabilidad.
+- Próximo: completar la matriz del catálogo para versiones y configuraciones de Windows admitidas, y después validarla empíricamente.
 
-Todavía no hay CLI, modelo calibrado ni corpus de validación. Los pesos descriptivos son supuestos heredados de investigación, no probabilidades. Licencia Apache-2.0.
+Todavía no hay CLI, modelo calibrado ni corpus de validación. No hay métricas de sospecha ponderadas. Licencia Apache-2.0.
 
 > La evidencia no es solamente lo que permanece.

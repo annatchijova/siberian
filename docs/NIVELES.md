@@ -21,13 +21,13 @@ Este plan avanza hacia el producto completo. Cada nivel deja una herramienta út
 
 ## Estado actual
 
-El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_silence.py`. Distingue estados y registra referencias de evidencia. El catálogo heredado fue reducido a cinco expectativas condicionales de Windows con documentación primaria; ya no calcula métricas ponderadas. Falta la matriz por versión/configuración y validación empírica. No tiene formato de expediente, CLI, hipótesis rivales, modelo calibrado ni corpus de evaluación. **Esto es la base de trabajo, todavía no un nivel terminado.**
+El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_silence.py`. Registra estados, referencias de evidencia, intervalo y alcance de adquisición. El contexto v2 también admite edición, arquitectura, revisión del build y canal de servicio; esos valores son declaraciones del analista y el digest los incluye, pero no verifica su verdad ni consulta una matriz de compatibilidad. El catálogo conserva cinco expectativas condicionales de Windows respaldadas por documentación primaria y no calcula métricas ponderadas. La excavación de VIGÍA confirmó que los pesos del detector original no están calibrados, que `temporal_drift.py` es una herramienta separada y que los módulos de linaje/contrafácticos no operan sobre esta matriz. Faltan la matriz por versión/configuración y la validación empírica. Tampoco hay manifiesto persistente, CLI, hipótesis rivales, modelo calibrado ni corpus de evaluación. **Esto es una base contextual útil, todavía no un nivel terminado.**
 
 ## Nivel 1 — Núcleo descriptivo contextualizado
 
 **Resultado útil:** un analista puede declarar actividades y observaciones respaldadas por fuentes, y obtener desde Python una matriz contextual con cobertura y procedencia.
 
-**Construir:** catálogo con fuentes, versión y condiciones de aplicabilidad; modelo explícito de contexto de sistema y adquisición; estados tipados; validación de entradas; digest determinista de contexto, catálogo y observaciones; API estable de biblioteca.
+**Construir:** catálogo con fuentes, versión y condiciones de aplicabilidad; contexto explícito del sistema y de la adquisición; estados tipados; validación de entradas; esquema de resultado versionado; digest determinista de contexto, catálogo y observaciones; API estable de biblioteca.
 
 **Se considera completo cuando:**
 
@@ -38,7 +38,7 @@ El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_s
 - la misma entrada, catálogo y versión producen el mismo resultado y digest;
 - el resumen muestra cobertura y cada observación, sin convertir conteos en sospecha o intención.
 
-La biblioteca actual aporta el modelo condicional inicial. El Nivel 1 no se da por terminado hasta que exista una matriz de aplicabilidad sustentada para las versiones/configuraciones admitidas y evidencia empírica de supervivencia y límites.
+La biblioteca actual aporta el modelo condicional inicial y registra los datos de plataforma que necesitará esa matriz. Las referencias de build aún son atestaciones aportadas por el analista, no verificaciones del programa. El Nivel 1 no se da por terminado hasta que exista una matriz de aplicabilidad sustentada para las versiones/configuraciones admitidas y evidencia empírica de generación, supervivencia, adquisición y límites.
 
 El [protocolo de validación del Nivel 1](LEVEL1_VALIDATION_PROTOCOL.md) fija los campos de esa matriz, separa fuentes documentales de observaciones de laboratorio y define controles benignos y casos ciegos. Es un plan; todavía no hay resultados empíricos ni tasas de error medidas.
 
@@ -120,4 +120,4 @@ La reproducibilidad y la procedencia comienzan en el Nivel 1; este nivel las vue
 
 Antes de iniciar cada nivel se comprueba que el anterior sea útil por sí solo. Durante cada nivel se revisan adversarialmente sus nuevas entradas, límites y supuestos, además de verificar que conserve los invariantes acumulados. La suite integrada y la revisión del sistema completo se ejecutan al llegar al horizonte acordado, no como sustituto de esa revisión por nivel.
 
-El siguiente trabajo concreto es cerrar el **Nivel 1**: establecer la procedencia y aplicabilidad del catálogo de artefactos y definir el modelo de contexto que la biblioteca actual todavía no representa.
+El siguiente trabajo concreto es cerrar el **Nivel 1**: llenar y revisar la matriz por configuración, contrastar cada fila con fuentes primarias y validar en laboratorio las condiciones de generación y pérdida. Hasta entonces, las ausencias permanecen como observaciones contextuales, sin score ni inferencia de intención. Véanse el [protocolo de validación](LEVEL1_VALIDATION_PROTOCOL.md) y la [excavación del código de VIGÍA](VIGIA_SOURCE_EXCAVATION.md).

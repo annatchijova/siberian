@@ -1,10 +1,10 @@
 # SIBERIAN artifact catalog review
 
-**Catalog version:** `windows-msdocs-2026-10-04-v2`
+**Catalog version:** `windows-msdocs-2026-10-04-v3`
 
 **Review status:** source and applicability review; not empirical validation.
 
-The supported range in the current implementation is broader than the evidence currently represented by its generic `Windows 10` label. A required build attestation is supplied by the caller; the library does not check it against a per-build/per-edition matrix. Windows 10 Home/Pro reached end of support on October 14, 2025; LTSC editions have separate lifecycles. See Microsoft's [Windows 10 lifecycle table](https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro). The matrix and laboratory work required to bound claims are specified in the [Level 1 validation protocol](LEVEL1_VALIDATION_PROTOCOL.md).
+The supported range in the current implementation is broader than the evidence currently represented by its generic `Windows 10` label. A required build attestation is supplied by the caller; the library does not check it against a per-build/per-edition matrix. Windows 10 Home/Pro reached end of support on October 14, 2025; LTSC editions have separate lifecycles. See Microsoft's [Windows 10 lifecycle table](https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro). The source-by-source limits and per-entry lab status are in the [active catalog matrix](CATALOG_MATRIX.md); validation design is in the [Level 1 validation protocol](LEVEL1_VALIDATION_PROTOCOL.md).
 
 The inherited VIGÍA seed mixed event logs, current system state, caches, file-system traces, and externally collected records as if they were comparable expectations. It also assigned ordinal “erasure difficulty” and “forensic value” weights without a calibration dataset. SIBERIAN removes those weights and activates only entries whose basic semantics and key applicability conditions can be tied to primary documentation.
 
@@ -12,13 +12,13 @@ The inherited VIGÍA seed mixed event logs, current system state, caches, file-s
 
 | Activity | Catalog entry | Conditions required before confirming absence | Main interpretation limit |
 | --- | --- | --- | --- |
-| Process creation | Windows Security event 4688 | Host build applicability attested; Process Creation auditing enabled; Security log acquired and covering the interval | Event generation depends on audit policy. Command-line content has a separate policy setting. |
-| Network connection | Windows Security event 5156 | Host build applicability attested; Filtering Platform Connection success auditing enabled; Security log acquired and covering the interval | Success auditing can create very high event volume. |
-| Successful logon | Windows Security event 4624 | Host build applicability attested; Successful Logon auditing enabled; Security log acquired and covering the interval | Event is recorded on the computer where the logon session is created. |
-| Session termination | Windows Security event 4634 | Host build applicability attested; Successful Logoff auditing enabled; Security log acquired and covering the interval | Abrupt shutdown and other conditions can prevent a corresponding logoff event. |
-| File-system change | NTFS USN change journal | Host build applicability attested; target volume is NTFS; journal active; acquired journal range covers interval without wrap | Journal size/allocation bounds mean older records may no longer be retained. |
+| Process creation | Windows Security event 4688 | Timestamped process-execution evidence; host build applicability attested; Process Creation success auditing enabled; Security log acquired and covering the interval | Event generation depends on audit policy. Command-line content has a separate policy setting. |
+| Permitted network connection | Windows Security event 5156 | Timestamped evidence of a WFP-permitted connection; host build applicability attested; Filtering Platform Connection success auditing enabled; Security log acquired and covering the interval | Event 5156 does not represent every network connection; success auditing is conditional and high-volume. |
+| Successful logon | Windows Security event 4624 | Timestamped evidence of a successful logon on the destination host; host build applicability attested; Logon success auditing enabled; Security log acquired and covering the interval | Event is recorded on the computer where the logon session is created. |
+| Session termination | Windows Security event 4634 | Timestamped evidence of a session termination; host build applicability attested; Audit Logoff success enabled; Security log acquired and covering the interval | Event 4634 records session termination, not necessarily user-initiated logoff. |
+| File-system change | NTFS USN change journal | Timestamped evidence of the file change; host build applicability attested; target volume is NTFS; journal active; acquired journal range covers interval without wrap | Journal size/allocation bounds mean older records may no longer be retained. |
 
-The linked Microsoft event/policy sources document Windows 10. The implementation rejects `CONFIRMED_ABSENT` for other declared releases and leaves those entries unknown with `catalog_scope_unverified`; it does not infer non-applicability. A confirmed absence also requires a build-applicability attestation, but build-specific compatibility within the Windows 10 family is not yet checked against a maintained matrix. It requires analyst-maintained evidence references with declared time intervals for each listed condition. The program checks references' presence and declared coverage, not whether their contents support the claim.
+The linked Microsoft event/policy sources document Windows 10. The implementation rejects `CONFIRMED_ABSENT` for other declared releases and leaves those entries unknown with `catalog_scope_unverified`; it does not infer non-applicability. A confirmed absence requires timestamped evidence for the primary action, a separate reference to the acquired source/query, a build-applicability attestation, and analyst-maintained evidence references with declared validity intervals for every listed condition. Build-specific compatibility within the Windows 10 family is not checked against a maintained matrix. The program checks references' presence, the action timestamp's interval, and declared condition coverage, not whether reference contents support the claims.
 
 ## Seed entries deferred or excluded
 

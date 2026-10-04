@@ -67,7 +67,7 @@ The earlier SIBERIAN direction also cited VIGÍA's `hypothesis_lineage.py` and `
 
 ## What SIBERIAN carries forward
 
-SIBERIAN retains the research question: compare an observed, action-linked evidence pattern with a bounded expectation, including what is absent. Its current implementation intentionally does not port the source weights or inference labels. It associates observations with `(action, artifact_type)`, distinguishes `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, and `OUT_OF_SCOPE`, and records source/context references. Its current Windows catalog is a narrow, conditional subset, not a complete port of the source knowledge base.
+SIBERIAN retains the research question: compare an observed, action-linked evidence pattern with a bounded expectation, including what is absent. Its current implementation intentionally does not port the source weights or inference labels. It associates observations with `(action, artifact_type)`, distinguishes `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, and `OUT_OF_SCOPE`, and records source/context references. Schema v3 requires timestamped, referenced primary-action evidence before an absence can be confirmed. Its current Windows catalog is a narrow, conditional subset, not a complete port of the source knowledge base.
 
 The current build-applicability check still requires caller-supplied attestations; it does not compare builds against a maintained matrix. That open Level 1 limitation is tracked in the [catalog review](CATALOG_REVIEW.md) and [validation protocol](LEVEL1_VALIDATION_PROTOCOL.md).
 

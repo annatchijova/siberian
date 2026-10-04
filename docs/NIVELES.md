@@ -21,7 +21,7 @@ Este plan avanza hacia el producto completo. Cada nivel deja una herramienta út
 
 ## Estado actual
 
-El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_silence.py`. Registra estados, referencias de evidencia, intervalo y alcance de adquisición. El contexto v2 también admite edición, arquitectura, revisión del build y canal de servicio; esos valores son declaraciones del analista y el digest los incluye, pero no verifica su verdad ni consulta una matriz de compatibilidad. El catálogo conserva cinco expectativas condicionales de Windows respaldadas por documentación primaria y no calcula métricas ponderadas. La excavación de VIGÍA confirmó que los pesos del detector original no están calibrados, que `temporal_drift.py` es una herramienta separada y que los módulos de linaje/contrafácticos no operan sobre esta matriz. Faltan la matriz por versión/configuración y la validación empírica. Tampoco hay manifiesto persistente, CLI, hipótesis rivales, modelo calibrado ni corpus de evaluación. **Esto es una base contextual útil, todavía no un nivel terminado.**
+El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_silence.py`. Registra estados, referencias de evidencia, intervalo y alcance de adquisición. El esquema v3 conserva edición, arquitectura, revisión del build, canal de servicio y evidencia con marca de tiempo de la acción primaria; estos datos son declaraciones del analista y el digest los incluye, pero no verifica el contenido de las fuentes ni consulta una matriz de compatibilidad. El catálogo conserva cinco expectativas condicionales de Windows respaldadas por documentación primaria, con nombres acotados para conexión permitida y terminación de sesión; no calcula métricas ponderadas. La excavación de VIGÍA confirmó que los pesos del detector original no están calibrados, que `temporal_drift.py` es una herramienta separada y que los módulos de linaje/contrafácticos no operan sobre esta matriz. Faltan la matriz por versión/configuración y la validación empírica. Tampoco hay manifiesto persistente, CLI, hipótesis rivales, modelo calibrado ni corpus de evaluación. **Esto es una base contextual útil, todavía no un nivel terminado.**
 
 ## Nivel 1 — Núcleo descriptivo contextualizado
 
@@ -34,7 +34,7 @@ El repo contiene una biblioteca Python derivada de `vigia/patterns/adversarial_s
 - cada artefacto del catálogo declara plataforma/versión/configuración admitida, condiciones necesarias, límites temporales y fuente verificable;
 - desconocidos, no adquiridos, inaplicables y ausencias confirmadas producen conteos distintos;
 - duplicados o datos incompatibles se rechazan con errores precisos;
-- cada ausencia confirmada exige build declarado, atestación referenciada de aplicabilidad y evidencia temporal para las condiciones que cubra todo el intervalo analizado;
+- cada ausencia confirmada exige referencia y timestamp de la acción primaria dentro del intervalo, referencia separada de consulta/adquisición, build declarado, atestación referenciada de aplicabilidad y evidencia temporal para las condiciones que cubra todo el intervalo analizado;
 - la misma entrada, catálogo y versión producen el mismo resultado y digest;
 - el resumen muestra cobertura y cada observación, sin convertir conteos en sospecha o intención.
 

@@ -14,7 +14,7 @@ The library API is in `siberian/adversarial_silence.py`. Each analysis requires 
 
 ```python
 from datetime import datetime, timezone
-from siberian import AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus, ConditionEvidence
+from siberian import ActionEvidence, AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus, ConditionEvidence
 
 context = AnalysisContext(
     os_profile="windows", os_release="Windows 10", system_build="recorded-build",
@@ -26,7 +26,13 @@ context = AnalysisContext(
     acquisition_ref="case://acquisition/security.evtx",
 )
 detector = AdversarialSilenceAnalyzer(context)
-detector.register_primary_action("process_execution")
+detector.register_primary_action(
+    "process_execution",
+    evidence=ActionEvidence(
+        "case://corroboration/process-execution",
+        datetime(2026, 10, 1, 12, tzinfo=timezone.utc),
+    ),
+)
 detector.register_observation(
     "process_execution", "security_event_4688", ArtifactStatus.CONFIRMED_ABSENT,
     evidence_ref="case://acquisition/security.evtx/query-4688",
@@ -53,11 +59,11 @@ result = detector.analyze()
 
 The versioned Windows catalog contains conditional entries for Security events 4688, 5156, 4624, 4634, and the NTFS USN change journal. The linked source set documents Windows 10; confirmed absences for other releases are rejected, while entries remain `UNKNOWN` with `catalog_scope_unverified`. Unsupported operating systems fail closed. Each entry lists applicability conditions, retention limits, interpretation limits, and primary documentation sources. The catalog is not yet a matrix across Windows 10 builds and policy configurations. See the [catalog review](docs/CATALOG_REVIEW.md).
 
-Observations are `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, or `OUT_OF_SCOPE`. Unreported catalog entries default to `UNKNOWN` with `conditions_unverified`. Known states require an evidence reference. Confirmed absence also requires a declared OS build and a `ConditionEvidence` reference for each entry-specific applicability condition, including an analyst attestation that the host build is within catalog scope. Every condition interval must cover the complete analysis interval. These are caller-provided locators and declarations, not automatically verified evidence. Out-of-scope entries require a documented `not_applicable` reason and reference.
+Observations are `PRESENT`, `CONFIRMED_ABSENT`, `UNKNOWN`, or `OUT_OF_SCOPE`. Unreported catalog entries default to `UNKNOWN` with `conditions_unverified`. Known states require an evidence reference. Confirmed absence also requires timestamped `ActionEvidence` for the primary action inside the analysis interval, a declared OS build, a reference to the acquired source/query, and a `ConditionEvidence` reference for each entry-specific applicability condition, including an analyst attestation that the host build is within catalog scope. Every condition interval must cover the complete analysis interval. The program checks that the action timestamp lies inside the interval; it does not verify evidence contents or that the action source is independent from other sources. Out-of-scope entries require a documented `not_applicable` reason and reference.
 
 ## Current analysis
 
-The result includes schema version `siberian-evidence-matrix-v2`, expected/present/confirmed-absent/unknown/out-of-scope counts, complete records, declared context, catalog version, and a SHA-256 digest. Optional edition, architecture, build revision, and servicing-channel values are analyst declarations and are included in the digest; they are not independently verified. Weighted scores were removed because their inherited ordinal weights had no empirical support. There is no composite score, threshold, or `PASS` / `WARN` / `ABSTAIN` decision.
+The result includes schema version `siberian-evidence-matrix-v3`, expected/present/confirmed-absent/unknown/out-of-scope counts, complete records, declared context, catalog version, and a SHA-256 digest. Confirmed absence requires a timestamped primary-action reference within the analysis interval, in addition to an acquired-source reference and applicability-condition references. The digest covers that action reference and timestamp. References and optional platform fields are analyst declarations; they are not independently verified. Weighted scores were removed because their inherited ordinal weights had no empirical support. There is no composite score, threshold, or `PASS` / `WARN` / `ABSTAIN` decision.
 
 ## Source-code observations
 
@@ -75,7 +81,7 @@ Important limits remain: the catalog is not yet a version/configuration matrix a
 
 ## Determinism, provenance, and integrity
 
-The implementation sorts catalog entries and uses a fixed versioned JSON structure with sorted keys and compact separators before hashing its UTF-8 bytes with SHA-256. This is a deterministic digest for the current API payload. Schema v2 changes the digest namespace from v1, so v1 and v2 digests are not comparable even when the optional platform fields are omitted. There is not yet a persisted-manifest reader or historical digest verifier. The digest is not a canonical manifest or an independent verifier format; schema/version evolution remains open.
+The implementation sorts catalog entries and uses a fixed versioned JSON structure with sorted keys and compact separators before hashing its UTF-8 bytes with SHA-256. This is a deterministic digest for the current API payload. Schema v3 changes the digest namespace from v1/v2 and adds primary-action evidence; digests across schema versions are not comparable. There is not yet a persisted-manifest reader or historical digest verifier. The digest is not a canonical manifest or an independent verifier format; schema/version evolution remains open.
 
 ## Threat and trust boundaries
 

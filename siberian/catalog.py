@@ -1,4 +1,4 @@
-"""Versioned, source-linked artifact expectations used by SIBERIAN v1.
+"""Versioned, source-linked artifact expectations used by SIBERIAN.
 
 An entry is a conditional expectation. It is not enabled for absence analysis
 unless the caller supplies a reference for every required condition.
@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-CATALOG_VERSION = "windows-msdocs-2026-10-04-v2"
+CATALOG_VERSION = "windows-msdocs-2026-10-04-v3"
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
         ),
     ),
     ExpectedArtifact(
-        action="network_connection",
+        action="permitted_network_connection",
         artifact_type="security_event_5156",
         description="Security event 5156 records a connection permitted by Windows Filtering Platform.",
         scope="Windows 10 using Windows Filtering Platform, matching the linked event and policy documentation.",
@@ -113,10 +113,10 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
         ),
     ),
     ExpectedArtifact(
-        action="logoff",
+        action="session_termination",
         artifact_type="security_event_4634",
         description="Security event 4634 records termination of a logon session.",
-        scope="Windows 10, matching the linked event and policy documentation; session termination is distinct from user-initiated logoff.",
+        scope="Windows 10, matching the linked event and policy documentation; records session termination, not necessarily user-initiated logoff.",
         required_conditions=(
             "host_build_matches_documented_catalog_scope",
             "audit_logoff_success_enabled_for_interval",

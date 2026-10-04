@@ -14,7 +14,7 @@ from enum import Enum
 
 from .catalog import CATALOG_VERSION, ExpectedArtifact, catalog_for_profile
 
-ANALYSIS_SCHEMA_VERSION = "siberian-evidence-matrix-v2"
+ANALYSIS_SCHEMA_VERSION = "siberian-evidence-matrix-v3"
 
 
 class ArtifactStatus(str, Enum):
@@ -115,6 +115,22 @@ class ConditionEvidence:
 
 
 @dataclass(frozen=True)
+class ActionEvidence:
+    """Reference and timestamp supporting one registered primary action."""
+
+    evidence_ref: str
+    observed_at: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.evidence_ref, str) or not self.evidence_ref.strip():
+            raise ValueError("action evidence_ref must be a non-empty string")
+        if not isinstance(self.observed_at, datetime):
+            raise TypeError("action observed_at must be a datetime value")
+        object.__setattr__(self, "evidence_ref", self.evidence_ref.strip())
+        object.__setattr__(self, "observed_at", _as_utc(self.observed_at, "observed_at"))
+
+
+@dataclass(frozen=True)
 class Observation:
     status: ArtifactStatus
     evidence_ref: str | None = None
@@ -127,6 +143,7 @@ class SilenceRecord:
     action: str
     expected_artifact: ExpectedArtifact
     observation: Observation
+    action_evidence: ActionEvidence | None = None
 
 
 @dataclass(frozen=True)
@@ -150,10 +167,10 @@ class SilenceAnalysisResult:
 class AdversarialSilenceAnalyzer:
     """Build an auditable matrix for source-backed, conditional expectations.
 
-    A ``CONFIRMED_ABSENT`` observation requires both a reference to the
-    acquired source/query and references supporting every catalog condition.
-    These references are identifiers/locators, not a substitute for reviewing
-    the underlying evidence.
+    A ``CONFIRMED_ABSENT`` observation requires evidence for the registered
+    primary action, a reference to the acquired source/query, and references
+    supporting every catalog condition. These are identifiers/locators, not a
+    substitute for reviewing the underlying evidence.
     """
 
     def __init__(self, context: AnalysisContext) -> None:
@@ -165,10 +182,13 @@ class AdversarialSilenceAnalyzer:
             (entry.action, entry.artifact_type): entry for entry in self._catalog
         }
         self._actions: set[str] = set()
+        self._action_evidence: dict[str, ActionEvidence] = {}
         self._observations: dict[tuple[str, str], Observation] = {}
 
-    def register_primary_action(self, action: str) -> None:
-        """Include a cataloged activity in the evidence matrix."""
+    def register_primary_action(
+        self, action: str, *, evidence: ActionEvidence | None = None
+    ) -> None:
+        """Include a cataloged activity and, optionally, its supporting evidence."""
         if not isinstance(action, str):
             raise TypeError("action must be str")
         available = sorted({entry.action for entry in self._catalog})
@@ -176,6 +196,19 @@ class AdversarialSilenceAnalyzer:
             raise ValueError(
                 f"unknown action {action!r}; known actions: {', '.join(available)}"
             )
+        if evidence is not None:
+            if not isinstance(evidence, ActionEvidence):
+                raise TypeError("evidence must be an ActionEvidence or None")
+            if not (
+                self._context.interval_start
+                <= evidence.observed_at
+                <= self._context.interval_end
+            ):
+                raise ValueError("primary action evidence must fall within the analysis interval")
+            previous = self._action_evidence.get(action)
+            if previous is not None and previous != evidence:
+                raise ValueError(f"conflicting primary action evidence for {action!r}")
+            self._action_evidence[action] = evidence
         self._actions.add(action)
 
     def register_observation(
@@ -239,6 +272,10 @@ class AdversarialSilenceAnalyzer:
             if parsed_reason is not None:
                 raise ValueError("known observations cannot have an unknown/out-of-scope reason")
         if parsed_status is ArtifactStatus.CONFIRMED_ABSENT:
+            if action not in self._action_evidence:
+                raise ValueError(
+                    "confirmed absence requires evidence for the primary action"
+                )
             if self._context.system_build is None:
                 raise ValueError("confirmed absence requires a declared system_build")
             if not entry.supports_os_release(self._context.os_release):
@@ -284,6 +321,7 @@ class AdversarialSilenceAnalyzer:
             SilenceRecord(
                 action=entry.action,
                 expected_artifact=entry,
+                action_evidence=self._action_evidence.get(entry.action),
                 observation=self._observations.get(
                     (entry.action, entry.artifact_type),
                     Observation(
@@ -356,6 +394,15 @@ def _context_payload(context: AnalysisContext) -> dict[str, str | None]:
     }
 
 
+def _action_evidence_payload(evidence: ActionEvidence | None) -> dict[str, str] | None:
+    if evidence is None:
+        return None
+    return {
+        "evidence_ref": evidence.evidence_ref,
+        "observed_at": evidence.observed_at.isoformat(timespec="microseconds"),
+    }
+
+
 def _condition_payload(evidence: ConditionEvidence) -> dict[str, str]:
     return {
         "evidence_ref": evidence.evidence_ref,
@@ -374,6 +421,7 @@ def _compute_analysis_hash(
         "records": [
             {
                 "expectation": _entry_payload(record.expected_artifact),
+                "action_evidence": _action_evidence_payload(record.action_evidence),
                 "status": record.observation.status.value,
                 "evidence_ref": record.observation.evidence_ref,
                 "reason": (

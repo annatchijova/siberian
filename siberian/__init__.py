@@ -2,6 +2,7 @@
 
 from .adversarial_silence import (
     ANALYSIS_SCHEMA_VERSION,
+    ActionEvidence,
     AnalysisContext,
     AdversarialSilenceAnalyzer,
     ArtifactStatus,
@@ -15,6 +16,7 @@ from .adversarial_silence import (
 
 __all__ = [
     "ANALYSIS_SCHEMA_VERSION",
+    "ActionEvidence",
     "AnalysisContext",
     "AdversarialSilenceAnalyzer",
     "ArtifactStatus",

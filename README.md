@@ -16,7 +16,7 @@ The first Python library builds a contextual evidence matrix for documented Wind
 
 ```python
 from datetime import datetime, timezone
-from siberian import AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus, ConditionEvidence
+from siberian import ActionEvidence, AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus, ConditionEvidence
 
 context = AnalysisContext(
     os_profile="windows", os_release="Windows 10", system_build="recorded-build",
@@ -28,7 +28,13 @@ context = AnalysisContext(
     acquisition_ref="case://acquisition/security.evtx",
 )
 analysis = AdversarialSilenceAnalyzer(context)
-analysis.register_primary_action("process_execution")
+analysis.register_primary_action(
+    "process_execution",
+    evidence=ActionEvidence(
+        "case://corroboration/process-execution",
+        datetime(2026, 10, 1, 12, tzinfo=timezone.utc),
+    ),
+)
 analysis.register_observation(
     "process_execution", "security_event_4688", ArtifactStatus.CONFIRMED_ABSENT,
     evidence_ref="case://acquisition/security.evtx/query-4688",
@@ -54,7 +60,7 @@ result = analysis.analyze()
 print(result.confirmed_absent_count, result.unknown_count, result.audit_hash)
 ```
 
-Unreported artifacts remain `UNKNOWN`. The result exposes schema version `siberian-evidence-matrix-v2`; its digest covers declared edition, architecture, build revision, and servicing channel when supplied. These fields are analyst-provided context, not automatic system attestation. `CONFIRMED_ABSENT` requires a reference to the acquired source and evidence for every applicability condition in the catalog entry. A reference does not validate itself: analysts must inspect the underlying material. Absence alone does not establish deletion, tampering, attribution, or intent. See the **[Technical README](TECHNICAL_README.md)** and [catalog review](docs/CATALOG_REVIEW.md).
+Unreported artifacts remain `UNKNOWN`. The result exposes schema version `siberian-evidence-matrix-v3`; its digest covers declared platform context, primary-action evidence, and observation evidence. `CONFIRMED_ABSENT` requires an evidence reference and timestamp for the primary action, a separate reference to the acquired source/query, and evidence for every applicability condition. The program checks that the action timestamp falls within the analysis interval; it does not validate the referenced material. Absence alone does not establish deletion, tampering, attribution, or intent. See the **[Technical README](TECHNICAL_README.md)** and [catalog review](docs/CATALOG_REVIEW.md).
 
 ## What makes the question useful
 
@@ -75,7 +81,8 @@ The VIGÍA detector is a research starting point, not a validated standalone pro
 ## Current package and next work
 
 - `siberian/`: dependency-free analysis library and source-linked conditional Windows catalog.
-- `docs/`: source provenance, technical behavior, and the language decision.
+- [Active catalog matrix](docs/CATALOG_MATRIX.md): source claims and applicability gaps for each expectation.
+- `docs/`: source provenance, technical behavior, build levels, and the language decision.
 - [Construction levels](docs/NIVELES.md): destination-driven path from a contextualized analysis core to calibrated, independently verifiable forensic reports.
 - [Level 1 validation protocol](docs/LEVEL1_VALIDATION_PROTOCOL.md): applicability-matrix fields, official-source review, and a controlled validation design. It records a plan, not results.
 - Next: complete the Level 1 catalog matrix across supported Windows versions and configurations, then validate it empirically.

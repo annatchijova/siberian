@@ -16,7 +16,7 @@ La primera biblioteca en Python construye una matriz contextual de expectativas 
 
 ```python
 from datetime import datetime, timezone
-from siberian import AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus, ConditionEvidence
+from siberian import ActionEvidence, AnalysisContext, AdversarialSilenceAnalyzer, ArtifactStatus, ConditionEvidence
 
 context = AnalysisContext(
     os_profile="windows", os_release="Windows 10", system_build="build-registrado",
@@ -28,7 +28,13 @@ context = AnalysisContext(
     acquisition_ref="case://adquisicion/security.evtx",
 )
 analysis = AdversarialSilenceAnalyzer(context)
-analysis.register_primary_action("process_execution")
+analysis.register_primary_action(
+    "process_execution",
+    evidence=ActionEvidence(
+        "case://corroboracion/ejecucion-proceso",
+        datetime(2026, 10, 1, 12, tzinfo=timezone.utc),
+    ),
+)
 analysis.register_observation(
     "process_execution", "security_event_4688", ArtifactStatus.CONFIRMED_ABSENT,
     evidence_ref="case://adquisicion/security.evtx/query-4688",
@@ -54,7 +60,7 @@ result = analysis.analyze()
 print(result.confirmed_absent_count, result.unknown_count, result.audit_hash)
 ```
 
-Los artefactos sin registrar quedan como `UNKNOWN`. El resultado expone el esquema `siberian-evidence-matrix-v2`; su digest incluye edición, arquitectura, revisión del build y canal de servicio declarados cuando se informan. Son datos aportados por el analista, no una atestación automática del sistema. `CONFIRMED_ABSENT` requiere una referencia a la fuente adquirida y evidencia para cada condición de aplicabilidad del catálogo. La referencia no se valida sola: el analista debe revisar el material. La ausencia por sí sola no demuestra borrado, manipulación, atribución ni intención. Ver **[README técnico](TECHNICAL_README.md)** y [revisión del catálogo](docs/CATALOG_REVIEW.md).
+Los artefactos sin registrar quedan como `UNKNOWN`. El resultado expone el esquema `siberian-evidence-matrix-v3`; el digest incluye el contexto declarado, la evidencia de la acción primaria y las observaciones. `CONFIRMED_ABSENT` requiere una referencia y timestamp para la acción primaria, otra referencia a la fuente/consulta adquirida y evidencia para cada condición de aplicabilidad. El programa comprueba que el timestamp de la acción caiga dentro del intervalo, pero no valida el material referenciado. La ausencia por sí sola no demuestra borrado, manipulación, atribución ni intención. Ver **[README técnico](TECHNICAL_README.md)** y [revisión del catálogo](docs/CATALOG_REVIEW.md).
 
 ## Qué aporta la pregunta
 
@@ -75,6 +81,7 @@ El detector de VIGÍA es un punto de partida de investigación, no un producto i
 ## Paquete actual y próximos pasos
 
 - `siberian/`: biblioteca de análisis sin dependencias y catálogo condicional de Windows con fuentes.
+- [Matriz del catálogo activo](docs/CATALOG_MATRIX.md): afirmaciones de fuentes y brechas de aplicabilidad por expectativa.
 - `docs/`: procedencia, comportamiento técnico y decisión de lenguaje.
 - [Niveles de construcción](docs/NIVELES.md): camino hacia informes forenses calibrados y verificables por terceros, en etapas útiles e íntegras.
 - [Protocolo de validación del Nivel 1](docs/LEVEL1_VALIDATION_PROTOCOL.md): campos para la matriz de aplicabilidad, revisión de fuentes oficiales y diseño de validación controlada. Documenta un plan, no resultados.

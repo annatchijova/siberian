@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import unittest
 
 from siberian import (
+    ActionEvidence,
     AnalysisContext,
     AdversarialSilenceAnalyzer,
     ArtifactStatus,
@@ -26,7 +27,13 @@ def make_context(**overrides: object) -> AnalysisContext:
 
 def analyzer(context: AnalysisContext | None = None) -> AdversarialSilenceAnalyzer:
     instance = AdversarialSilenceAnalyzer(context or make_context())
-    instance.register_primary_action("process_execution")
+    instance.register_primary_action(
+        "process_execution",
+        evidence=ActionEvidence(
+            "case://corroboration/process-execution",
+            datetime(2026, 10, 1, 12, tzinfo=timezone.utc),
+        ),
+    )
     return instance
 
 
@@ -53,6 +60,65 @@ class ContextualAnalysisTests(unittest.TestCase):
                 "security_event_4688",
                 ArtifactStatus.CONFIRMED_ABSENT,
                 evidence_ref="case://query/4688",
+            )
+
+    def test_confirmed_absence_requires_primary_action_evidence(self) -> None:
+        instance = AdversarialSilenceAnalyzer(make_context())
+        instance.register_primary_action("process_execution")
+        with self.assertRaisesRegex(ValueError, "evidence for the primary action"):
+            instance.register_observation(
+                "process_execution",
+                "security_event_4688",
+                ArtifactStatus.CONFIRMED_ABSENT,
+                evidence_ref="case://query/4688",
+            )
+
+    def test_primary_action_evidence_must_be_inside_analysis_interval(self) -> None:
+        instance = AdversarialSilenceAnalyzer(make_context())
+        with self.assertRaisesRegex(ValueError, "within the analysis interval"):
+            instance.register_primary_action(
+                "process_execution",
+                evidence=ActionEvidence(
+                    "case://event/process-execution",
+                    datetime(2026, 9, 30, tzinfo=timezone.utc),
+                ),
+            )
+
+    def test_action_evidence_is_retained_and_included_in_digest(self) -> None:
+        first = AdversarialSilenceAnalyzer(make_context())
+        first.register_primary_action(
+            "process_execution",
+            evidence=ActionEvidence(
+                "case://event/one",
+                datetime(2026, 10, 1, 12, tzinfo=timezone.utc),
+            ),
+        )
+        second = AdversarialSilenceAnalyzer(make_context())
+        second.register_primary_action(
+            "process_execution",
+            evidence=ActionEvidence(
+                "case://event/two",
+                datetime(2026, 10, 1, 12, tzinfo=timezone.utc),
+            ),
+        )
+
+        result_one = first.analyze()
+        result_two = second.analyze()
+        self.assertEqual(
+            result_one.records[0].action_evidence.evidence_ref,
+            "case://event/one",
+        )
+        self.assertNotEqual(result_one.audit_hash, result_two.audit_hash)
+
+    def test_conflicting_primary_action_evidence_is_rejected(self) -> None:
+        instance = analyzer()
+        with self.assertRaisesRegex(ValueError, "conflicting primary action evidence"):
+            instance.register_primary_action(
+                "process_execution",
+                evidence=ActionEvidence(
+                    "case://other/process-execution",
+                    datetime(2026, 10, 1, 12, tzinfo=timezone.utc),
+                ),
             )
 
     def test_confirmed_absence_with_conditions_is_recorded(self) -> None:
@@ -155,7 +221,7 @@ class ContextualAnalysisTests(unittest.TestCase):
             servicing_channel="recorded-channel",
         )).analyze()
 
-        self.assertEqual(base.schema_version, "siberian-evidence-matrix-v2")
+        self.assertEqual(base.schema_version, "siberian-evidence-matrix-v3")
         self.assertNotEqual(base.audit_hash, configured.audit_hash)
 
     def test_optional_platform_fields_reject_blank_values(self) -> None:
@@ -174,6 +240,13 @@ class ContextualAnalysisTests(unittest.TestCase):
     def test_unsupported_profile_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "unsupported OS profile"):
             analyzer(make_context(os_profile="linux"))
+
+    def test_catalog_action_names_match_event_semantics(self) -> None:
+        instance = AdversarialSilenceAnalyzer(make_context())
+        instance.register_primary_action("permitted_network_connection")
+        instance.register_primary_action("session_termination")
+        with self.assertRaisesRegex(ValueError, "unknown action"):
+            instance.register_primary_action("network_connection")
 
     def test_undocumented_release_stays_unknown_and_rejects_absence(self) -> None:
         instance = analyzer(make_context(os_release="Windows 11 24H2"))

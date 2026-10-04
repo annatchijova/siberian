@@ -27,9 +27,11 @@ Documentary support and laboratory observations are separate evidence classes. A
 
 For an entry to support a confirmed-absence claim, the matrix must identify a bounded configuration and the observed case must match it. Unsupported or unmatched configurations stay `UNKNOWN`; analysts' references remain locators and do not become automated validation merely because the API accepts them.
 
-The current `AnalysisContext` records declared release/build and optional edition, architecture, build revision, and servicing channel. The result digest includes these values when supplied. They improve case description but do not perform matrix lookup or validate an analyst's applicability attestation.
+The current `AnalysisContext` records declared release/build and optional edition, architecture, build revision, and servicing channel. The result digest includes these values when supplied. A confirmed absence also requires timestamped `ActionEvidence` within the analysis interval, separate from the acquired-source reference for the absent artifact. These locators improve traceability but do not validate source contents or perform matrix lookup.
 
 ## 2. Source review findings (2026-10-04)
+
+Per-entry source claims and unsupported dimensions are recorded in the [active catalog matrix](CATALOG_MATRIX.md). It is a documentary review; no laboratory measurements are entered there.
 
 The official [Windows 10 lifecycle page](https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro) lists feature releases and states that Windows 10 Home/Pro 22H2 was the final release, with support ending October 14, 2025. LTSC editions follow their own lifecycle. The [Windows lifecycle FAQ](https://learn.microsoft.com/en-us/lifecycle/faq/windows) likewise distinguishes editions and servicing timelines. This supports recording edition and release, not collapsing the whole family into one scope.
 

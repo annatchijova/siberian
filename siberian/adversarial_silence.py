@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Optional, Dict
 
 from .catalog import CATALOG_VERSION, ExpectedArtifact, catalog_for_profile
 
@@ -356,6 +357,42 @@ class AdversarialSilenceAnalyzer:
             records=records,
             schema_version=ANALYSIS_SCHEMA_VERSION,
         )
+
+    def to_bundle(self, result: SilenceAnalysisResult) -> "EvidenceMatrixBundle":
+        """Convert analysis result to an EvidenceMatrixBundle (unsealed)."""
+        from .bundle import EvidenceMatrixBundle
+        return EvidenceMatrixBundle(
+            context=result.context,
+            catalog_version=result.catalog_version,
+            records=result.records,
+            expected_count=result.expected_count,
+            present_count=result.present_count,
+            confirmed_absent_count=result.confirmed_absent_count,
+            unknown_count=result.unknown_count,
+            out_of_scope_count=result.out_of_scope_count,
+            schema_version=result.schema_version,
+        )
+
+    def seal(
+        self,
+        result: SilenceAnalysisResult,
+        engine_attestation_hash: str = "",
+        tool_log_tip: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Seal the analysis result into a tamper-evident bundle.
+
+        Args:
+            result: The SilenceAnalysisResult from analyze().
+            engine_attestation_hash: Optional hash of engine source + deps.
+            tool_log_tip: Optional dict with chain_tip_sha256/chain_tip_hmac
+                from ToolExecutionLogChain.bundle_fields().
+
+        Returns:
+            Sealed bundle dict ready for BundleBuilder.save() or JSON serialization.
+        """
+        from .bundle import BundleBuilder
+        bundle = self.to_bundle(result)
+        return BundleBuilder.seal(bundle, engine_attestation_hash, tool_log_tip)
 
 
 def _entry_payload(entry: ExpectedArtifact) -> dict[str, object]:

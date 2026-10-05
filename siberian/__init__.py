@@ -13,6 +13,31 @@ from .adversarial_silence import (
     SilenceAnalysisResult,
     SilenceRecord,
 )
+from .bundle import (
+    EvidenceMatrixBundle,
+    IntegrityBlock,
+    BundleBuilder,
+    BUNDLE_VERSION,
+)
+from .canonicalize import (
+    CANONICALIZE_VERSION,
+    canonical_hash,
+    canonicalize_v1,
+    canonicalize_v2,
+)
+from .hash_chain import (
+    CHAIN_SCHEMA_VERSION,
+    ChainLink,
+    ChainVerification,
+    ToolExecutionLogChain,
+    verify_chain,
+    verify_tool_execution_log,
+    verify_bundle_tool_log,
+    build_link,
+    compute_entry_hash,
+    compute_entry_hmac,
+    resolve_hmac_key,
+)
 
 __all__ = [
     "ANALYSIS_SCHEMA_VERSION",
@@ -26,4 +51,23 @@ __all__ = [
     "Observation",
     "SilenceAnalysisResult",
     "SilenceRecord",
+    "EvidenceMatrixBundle",
+    "IntegrityBlock",
+    "BundleBuilder",
+    "BUNDLE_VERSION",
+    "CANONICALIZE_VERSION",
+    "canonical_hash",
+    "canonicalize_v1",
+    "canonicalize_v2",
+    "CHAIN_SCHEMA_VERSION",
+    "ChainLink",
+    "ChainVerification",
+    "ToolExecutionLogChain",
+    "verify_chain",
+    "verify_tool_execution_log",
+    "verify_bundle_tool_log",
+    "build_link",
+    "compute_entry_hash",
+    "compute_entry_hmac",
+    "resolve_hmac_key",
 ]

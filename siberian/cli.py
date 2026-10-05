@@ -13,7 +13,9 @@ from .adversarial_silence import (
     SilenceAnalysisResult,
     SilenceRecord,
 )
+from .bundle import BundleBuilder
 from .casefile import CaseFileError, load_case_file
+from .plaso_import import PlasoImporter, get_default_mappings, PlasoToSiberianMapping
 
 _NEXT_CHECKS = {
     ObservationReason.CONDITIONS_UNVERIFIED: "document each required applicability condition across the full analysis interval",
@@ -36,11 +38,52 @@ def main(argv: list[str] | None = None) -> int:
         ("validate", "validate a case file without producing a report"),
         ("analyze", "produce a deterministic JSON evidence matrix"),
         ("explain", "explain statuses and unresolved conditions in a case"),
+        ("seal", "produce a tamper-evident sealed bundle from a case file"),
+        ("verify", "verify a sealed bundle (stdlib-only verifier)"),
+        ("import-plaso", "import Plaso l2tcsv as PRESENT observations into a case file"),
     ):
         subparser = commands.add_parser(command, help=help_text)
         subparser.add_argument("case_file", type=Path, help="analyst-authored JSON case file")
 
+    # import-plaso specific options
+    import_parser = commands.choices["import-plaso"]
+    import_parser.add_argument("plaso_csv", type=Path, help="Plaso l2tcsv export file")
+    import_parser.add_argument("-o", "--output", type=Path, required=True, help="output enriched case file")
+    import_parser.add_argument("--mappings", type=Path, help="optional custom mappings JSON file")
+    import_parser.add_argument("--evidence-prefix", default="case://import/plaso", help="evidence ref prefix")
+    import_parser.add_argument("--max-rows", type=int, default=1_000_000, help="max rows to process")
+    import_parser.add_argument("--diagnostics", type=Path, help="write diagnostics JSON to file")
+
+    # seal-specific options
+    seal_parser = commands.choices["seal"]
+    seal_parser.add_argument(
+        "-o", "--output", type=Path, help="output path for sealed bundle (default: stdout)"
+    )
+    seal_parser.add_argument(
+        "--engine-attestation", action="store_true",
+        help="include engine_attestation_hash (hashes source + deps)"
+    )
+
+    # verify-specific options
+    verify_parser = commands.choices["verify"]
+    verify_parser.add_argument(
+        "--strict", "-s", action="store_true", help="require Level 3 (fully compliant)"
+    )
+    verify_parser.add_argument(
+        "--verbose", "-v", action="store_true"
+    )
+    verify_parser.add_argument(
+        "--json", action="store_true", help="JSON output"
+    )
+
     args = parser.parse_args(argv)
+
+    if args.command == "verify":
+        return _cmd_verify(args)
+
+    if args.command == "import-plaso":
+        return _cmd_import_plaso(args)
+
     try:
         analyzer, activity_count, observation_count = load_case_file(args.case_file)
         result = analyzer.analyze()
@@ -55,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.command == "analyze":
         print(json.dumps(_result_payload(result), ensure_ascii=False, indent=2))
+    elif args.command == "seal":
+        return _cmd_seal(analyzer, result, args)
     else:
         print(_explain(result))
     return 0
@@ -188,6 +233,116 @@ def _safe_display(value: str) -> str:
         char if not unicodedata.category(char).startswith("C") else f"\\u{ord(char):04x}"
         for char in value
     )
+
+
+def _cmd_seal(analyzer, result: SilenceAnalysisResult, args) -> int:
+    """Produce a tamper-evident sealed bundle from a case file."""
+    engine_attestation_hash = ""
+    if args.engine_attestation:
+        engine_attestation_hash = BundleBuilder.compute_engine_attestation()
+
+    tool_log_tip = None  # Could be extended to accept tool log from file
+
+    sealed = analyzer.seal(result, engine_attestation_hash, tool_log_tip)
+
+    if args.output:
+        file_hash = BundleBuilder.save(sealed, str(args.output))
+        print(f"Sealed bundle written to {args.output} (file hash: {file_hash})", file=sys.stderr)
+    else:
+        print(json.dumps(sealed, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_verify(args) -> int:
+    """Verify a sealed bundle using the standalone stdlib-only verifier."""
+    from .verify import verify_bundle, VerificationResult
+
+    try:
+        with open(args.case_file, "r", encoding="utf-8") as f:
+            bundle = json.load(f)
+    except FileNotFoundError:
+        print(f"siberian: error: not found: {args.case_file}", file=sys.stderr)
+        return 1
+    except json.JSONDecodeError as e:
+        print(f"siberian: error: invalid JSON: {e}", file=sys.stderr)
+        return 1
+
+    result = verify_bundle(bundle, strict=args.strict, verbose=args.verbose)
+
+    if args.json:
+        print(result.to_json())
+    else:
+        d = result.to_dict()
+        status = "PASS" if result.passed else "FAIL"
+        print(f"\n{'='*60}")
+        print(f"  SIBERIAN — Independent Verifier")
+        print(f"{'='*60}")
+        print(f"  Result      : {status}")
+        print(f"  Conformity  : Level {result.conformity_level} — {d['conformity_label']}")
+        print(f"  Timestamp   : {result.timestamp}")
+        s = d["summary"]
+        print(f"  Checks      : {s['passed']}/{s['total']} OK")
+        print(f"{'='*60}")
+
+        if args.verbose or not result.passed:
+            print()
+            for check in result.checks:
+                icon = "OK  " if check["passed"] else ("FAIL" if check["severity"] == "ERROR" else "WARN")
+                print(f"  [{icon}] {check['rule']}")
+                print(f"          {check['message']}")
+                if check.get("detail") and args.verbose:
+                    for v in (check["detail"] if isinstance(check["detail"], list) else [check["detail"]]):
+                        print(f"          > {v}")
+
+        if not result.passed:
+            print("\n  CRITICAL FAILURES:")
+            for fail in result.critical_failures():
+                print(f"    - {fail['rule']}: {fail['message']}")
+            print()
+
+    return 0 if result.passed else 1
+
+
+def _cmd_import_plaso(args) -> int:
+    """Import Plaso l2tcsv as PRESENT observations into a case file."""
+    mappings = get_default_mappings()
+    if args.mappings:
+        with args.mappings.open("r", encoding="utf-8") as f:
+            custom = json.load(f)
+        mappings = [PlasoToSiberianMapping(**m) for m in custom]
+
+    importer = PlasoImporter(
+        mappings=mappings,
+        evidence_ref_prefix=args.evidence_prefix,
+        max_rows=args.max_rows,
+    )
+
+    try:
+        case, diagnostics = importer.import_file(
+            args.plaso_csv, args.case_file, args.output
+        )
+        print(f"Import complete: {diagnostics.observations_created} PRESENT observations created")
+        print(f"  Total rows: {diagnostics.total_rows}")
+        print(f"  Matched: {diagnostics.matched_rows}")
+        print(f"  Unmatched: {diagnostics.unmatched_rows}")
+        print(f"  Rejected: {diagnostics.rejected_rows}")
+        print(f"  Output: {args.output}")
+
+        if args.diagnostics:
+            args.diagnostics.parent.mkdir(parents=True, exist_ok=True)
+            with args.diagnostics.open("w", encoding="utf-8") as f:
+                json.dump(diagnostics.to_dict(), f, ensure_ascii=False, indent=2)
+            print(f"  Diagnostics: {args.diagnostics}")
+
+        if diagnostics.errors:
+            print(f"  Errors: {len(diagnostics.errors)} (see diagnostics)", file=sys.stderr)
+            return 1
+
+    except Exception as e:
+        print(f"Import failed: {e}", file=sys.stderr)
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":

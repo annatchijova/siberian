@@ -57,6 +57,7 @@ BUNDLE_VERSION: str = "1.0"
 BUNDLE_SUPPORTED_VERSIONS: List[str] = ["1.0"]
 
 CATALOG_VERSION: str = "windows-msdocs-2026-10-04-v3"
+CANONICALIZE_VERSION: str = "2"  # v2 is default for new seals
 
 
 def _now_iso() -> str:
@@ -171,6 +172,7 @@ class EvidenceMatrixBundle:
             "timestamp": self.timestamp,
             "context": self._context_to_dict(self.context),
             "catalog_version": self.catalog_version,
+            "canonicalize_version": CANONICALIZE_VERSION,
             "schema_version": self.schema_version,
             "records": [self._record_to_dict(r) for r in self.records],
             "counts": {
@@ -371,21 +373,42 @@ class BundleBuilder:
         Step 3: catalog_hash over catalog_version
         Step 4: bundle_hash over complete snapshot (includes all above hashes)
 
+        The canonicalize_version from the bundle determines the hash scheme.
+        No silent fallback — the bundle declares its version.
+
         Returns a serializable dict ready for storage.
         Does not modify the original EvidenceMatrixBundle object.
         """
         # Immutable snapshot of content at this moment
         bundle_dict = bundle.to_dict()
 
+        # Determine canonicalization scheme from bundle (explicit, not fallback)
+        canon_version = bundle_dict.get("canonicalize_version", CANONICALIZE_VERSION)
+        if canon_version == "2":
+            canon = _canonicalize_v2
+        elif canon_version == "1":
+            canon = _canonicalize_v1
+        else:
+            raise ValueError(f"Unsupported canonicalize_version: {canon_version}")
+
+        def _sha256_dict_versioned(obj: Dict) -> str:
+            import hashlib
+            canonical = canon(obj)
+            serialized = json.dumps(canonical, sort_keys=True, ensure_ascii=True).encode("utf-8")
+            return hashlib.sha256(serialized).hexdigest()
+
+        def _sha256_dict_matches_versioned(obj: Dict, stored: str) -> bool:
+            return _sha256_dict_versioned(obj) == stored
+
         # Step 1: records_hash over the records array (deterministic order already)
         records_for_hash = bundle_dict["records"]
-        records_hash = _sha256_dict({"records": records_for_hash})
+        records_hash = _sha256_dict_versioned({"records": records_for_hash})
 
         # Step 2: context_hash over context
-        context_hash = _sha256_dict(bundle_dict["context"])
+        context_hash = _sha256_dict_versioned(bundle_dict["context"])
 
         # Step 3: catalog_hash over catalog_version
-        catalog_hash = _sha256_dict({"catalog_version": bundle_dict["catalog_version"]})
+        catalog_hash = _sha256_dict_versioned({"catalog_version": bundle_dict["catalog_version"]})
 
         # Step 4: bundle_hash over EVERYTHING (I2)
         bundle_payload = dict(bundle_dict)
@@ -406,8 +429,12 @@ class BundleBuilder:
                 if value:
                     bundle_payload[field] = value
 
-        analysis_fingerprint = _sha256_dict(_analysis_projection(bundle_payload))
-        bundle_hash = _sha256_dict(bundle_payload)
+        # Include engine_attestation_hash in analysis_fingerprint and bundle_hash
+        # so it's cryptographically bound (fixes F2/F3)
+        bundle_payload["engine_attestation_hash"] = engine_attestation_hash
+
+        analysis_fingerprint = _sha256_dict_versioned(_analysis_projection(bundle_payload))
+        bundle_hash = _sha256_dict_versioned(bundle_payload)
 
         integrity = IntegrityBlock(
             bundle_hash=bundle_hash,
@@ -499,36 +526,47 @@ class BundleBuilder:
             stored_catalog_hash = integrity.get("catalog_hash", "")
             stored_analysis_fingerprint = integrity.get("analysis_fingerprint", "")
 
+            # Determine canonicalization scheme from bundle (explicit, not fallback)
+            canon_version = sealed_dict.get("canonicalize_version", CANONICALIZE_VERSION)
+            if canon_version == "2":
+                canon = _canonicalize_v2
+            elif canon_version == "1":
+                canon = _canonicalize_v1
+            else:
+                return False, f"Unsupported canonicalize_version: {canon_version}"
+
+            def _sha256_dict_versioned(obj: Dict) -> str:
+                canonical = canon(obj)
+                serialized = json.dumps(canonical, sort_keys=True, ensure_ascii=True).encode("utf-8")
+                return hashlib.sha256(serialized).hexdigest()
+
             # Verify records_hash
             records = sealed_dict.get("records", [])
-            if not _sha256_dict_matches({"records": records}, stored_records_hash):
-                recomputed = _sha256_dict({"records": records})
+            if _sha256_dict_versioned({"records": records}) != stored_records_hash:
+                recomputed = _sha256_dict_versioned({"records": records})
                 return False, f"records_hash invalid: {recomputed[:8]}!={stored_records_hash[:8]}"
 
             # Verify context_hash
             context = sealed_dict.get("context", {})
-            if not _sha256_dict_matches(context, stored_context_hash):
-                recomputed = _sha256_dict(context)
+            if _sha256_dict_versioned(context) != stored_context_hash:
+                recomputed = _sha256_dict_versioned(context)
                 return False, f"context_hash invalid: {recomputed[:8]}!={stored_context_hash[:8]}"
 
             # Verify catalog_hash
             catalog_version = sealed_dict.get("catalog_version", "")
-            if not _sha256_dict_matches({"catalog_version": catalog_version}, stored_catalog_hash):
-                recomputed = _sha256_dict({"catalog_version": catalog_version})
+            if _sha256_dict_versioned({"catalog_version": catalog_version}) != stored_catalog_hash:
+                recomputed = _sha256_dict_versioned({"catalog_version": catalog_version})
                 return False, f"catalog_hash invalid: {recomputed[:8]}!={stored_catalog_hash[:8]}"
 
-            # Verify bundle_hash (tries v2 then v1 — backward-compat)
-            payload, _scheme = _matching_payload(sealed_dict, stored_bundle_hash)
-            if payload is None:
-                payload = _sealed_payload(sealed_dict)
-                recomputed = _sha256_dict(payload)
+            # Verify bundle_hash
+            payload = _sealed_payload(sealed_dict)
+            if _sha256_dict_versioned(payload) != stored_bundle_hash:
+                recomputed = _sha256_dict_versioned(payload)
                 return False, f"bundle_hash invalid: {recomputed[:8]}!={stored_bundle_hash[:8]}"
 
             # Verify analysis_fingerprint if present
-            if stored_analysis_fingerprint and not _sha256_dict_matches(
-                _analysis_projection(payload), stored_analysis_fingerprint
-            ):
-                recomputed = _sha256_dict(_analysis_projection(payload))
+            if stored_analysis_fingerprint and _sha256_dict_versioned(_analysis_projection(payload)) != stored_analysis_fingerprint:
+                recomputed = _sha256_dict_versioned(_analysis_projection(payload))
                 return False, f"analysis_fingerprint invalid: {recomputed[:8]}!={stored_analysis_fingerprint[:8]}"
 
             return True, "OK — bundle intact"

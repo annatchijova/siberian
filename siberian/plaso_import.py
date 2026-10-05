@@ -114,7 +114,8 @@ class ImportDiagnostics:
     unmatched_rows: int = 0
     rejected_rows: int = 0
     mapping_errors: int = 0
-    observations_created: int = 0
+    observations_created: int = 0  # PRESENT observations only
+    unknown_conditions_created: int = 0  # UNKNOWN with reason=conditions_unverified
     evidence_ref_prefix: str = ""
     mappings_used: List[str] = field(default_factory=list)
     unmatched_sample: List[Dict[str, str]] = field(default_factory=list)
@@ -133,6 +134,7 @@ class ImportDiagnostics:
             "rejected_rows": self.rejected_rows,
             "mapping_errors": self.mapping_errors,
             "observations_created": self.observations_created,
+            "unknown_conditions_created": self.unknown_conditions_created,
             "evidence_ref_prefix": self.evidence_ref_prefix,
             "mappings_used": self.mappings_used,
             "unmatched_sample": self.unmatched_sample[:100],  # cap sample
@@ -407,15 +409,20 @@ class PlasoImporter:
                 diagnostics.matched_rows += 1
                 key = (mapping.activity, mapping.artifact_type)
 
-                # Only create PRESENT if we haven't already for this activity+artifact
+                # Only create observation if we haven't already for this activity+artifact
                 # (multiple Plaso rows can map to same catalog entry)
                 if key not in present_created:
                     # Build observation entry
                     evidence_ref = self._build_evidence_ref(row_num, mapping)
 
+                    # Per PLASO_IMPORT.md: import creates UNKNOWN with
+                    # reason="conditions_unverified" only. Plaso CSV cannot establish
+                    # audit policy state, log coverage, or build applicability —
+                    # those require separate analyst evidence.
                     obs_entry = {
                         "artifact_type": mapping.artifact_type,
-                        "status": "present",
+                        "status": "unknown",
+                        "reason": "conditions_unverified",
                         "evidence_ref": evidence_ref,
                         "conditions": {}  # Analyst must fill applicability conditions separately
                     }
@@ -433,7 +440,7 @@ class PlasoImporter:
                             if not existing:
                                 activity.setdefault("observations", []).append(obs_entry)
                                 present_created.add(key)
-                                diagnostics.observations_created += 1
+                                diagnostics.unknown_conditions_created += 1
                                 if f"{mapping.activity}/{mapping.artifact_type}" not in diagnostics.mappings_used:
                                     diagnostics.mappings_used.append(f"{mapping.activity}/{mapping.artifact_type}")
                             activity_found = True
@@ -446,7 +453,7 @@ class PlasoImporter:
                             "observations": [obs_entry]
                         })
                         present_created.add(key)
-                        diagnostics.observations_created += 1
+                        diagnostics.unknown_conditions_created += 1
                         if f"{mapping.activity}/{mapping.artifact_type}" not in diagnostics.mappings_used:
                             diagnostics.mappings_used.append(f"{mapping.activity}/{mapping.artifact_type}")
 
@@ -470,7 +477,8 @@ def main(argv: List[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="siberian-import-plaso",
-        description="Import Plaso l2tcsv as PRESENT observations into SIBERIAN case file.",
+        description="Import Plaso l2tcsv as UNKNOWN (conditions_unverified) observations into SIBERIAN case file. "
+                    "PRESENT requires explicit applicability conditions from analyst.",
     )
     parser.add_argument("plaso_csv", type=Path, help="Plaso l2tcsv export file")
     parser.add_argument("template", type=Path, help="SIBERIAN case template (siberian-case-v1)")
@@ -499,7 +507,7 @@ def main(argv: List[str] | None = None) -> int:
         case, diagnostics = importer.import_file(
             args.plaso_csv, args.template, args.output
         )
-        print(f"Import complete: {diagnostics.observations_created} PRESENT observations created")
+        print(f"Import complete: {diagnostics.unknown_conditions_created} UNKNOWN (conditions_unverified) observations created")
         print(f"  Total rows: {diagnostics.total_rows}")
         print(f"  Matched: {diagnostics.matched_rows}")
         print(f"  Unmatched: {diagnostics.unmatched_rows}")

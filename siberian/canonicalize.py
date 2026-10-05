@@ -99,8 +99,8 @@ def _canonicalize_v2(obj: Any) -> Any:
     Differences from v1 (SCALARS IDENTICAL — only strings and Fraction change):
     - str      → "s:" + NFC(CRLF/CR->LF)   [unique prefix + normalization]
     - Fraction → "num/den:frac"            [before fell to str() → "1/2"]
-    - fallback → "s:" + NFC(str(obj))      [never raw, avoids collision]
     - bool/int/float/None/dict/list        [identical to v1, bit for bit]
+    - UNKNOWN TYPES → TypeError             [no silent fallback, prevents instability]
 
     Why this closes the three collision classes:
     - True→"true" vs "true"→"s:true"       : no longer collide.
@@ -108,6 +108,7 @@ def _canonicalize_v2(obj: Any) -> Any:
     - None→"null" vs "null"→"s:null"       : no longer collide.
     - NFC/NFD and CRLF/LF                   : normalized to single form.
     - Fraction(1,2)                         : unique and stable.
+    - Unknown types rejected                : no silent instability.
     """
     if isinstance(obj, bool):
         return "true" if obj else "false"
@@ -131,7 +132,8 @@ def _canonicalize_v2(obj: Any) -> Any:
         return {k: _canonicalize_v2(v) for k, v in sorted(obj.items())}
     if isinstance(obj, (list, tuple)):
         return [_canonicalize_v2(v) for v in obj]
-    return _V2_STR_PREFIX + _v2_norm_str(str(obj))
+    raise TypeError(f"Unsupported type for canonicalization: {type(obj).__name__}. "
+                    f"Supported: bool, int, float, str, None, Fraction, dict, list, tuple.")
 
 
 # Default for all production code (new seals) = v2.

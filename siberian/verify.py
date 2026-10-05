@@ -31,7 +31,8 @@ VALIDATIONS:
          lives in the repo (tests/test_attestation_coverage.py). R4 does
          NOT prove the bundle was produced by the attested engine — only
          that the field exists and has SHA-256 form.
-    R5 — Tool execution log anchoring (chain_tip_sha256/hmac when present)
+    R5 — Tool execution log anchoring (chain_tip_sha256/hmac verified
+         against actual log entries)
 
 CONFORMITY LEVELS:
     Level 0 — Non-compliant:         invalid structure
@@ -50,11 +51,12 @@ HASH PROTOCOL (identical to BundleBuilder.seal):
     records_hash  = SHA256({"records": records_array})
     context_hash  = SHA256(context_dict)
     catalog_hash  = SHA256({"catalog_version": catalog_version})
-    analysis_fingerprint = SHA255(analytical projection without UUID/timestamps)
+    analysis_fingerprint = SHA256(analytical projection without UUID/timestamps)
     bundle_hash   = SHA256(bundle_id + version + timestamp +
                            records_hash + context_hash + catalog_hash +
                            records + context + catalog_version + counts +
-                           schema_version + analysis_fingerprint)
+                           schema_version + analysis_fingerprint +
+                           engine_attestation_hash)
 """
 from __future__ import annotations
 
@@ -74,6 +76,7 @@ from typing import Any, Dict, List, Optional, Tuple
 _BUNDLE_VERSION = "1.0"
 _BUNDLE_SUPPORTED_VERSIONS = ["1.0"]
 _CATALOG_VERSION = "windows-msdocs-2026-10-04-v3"
+_CANONICALIZE_VERSION = "2"  # v2 is default for new seals
 _VERIFIER_VERSION = "1.0.0"
 
 # ---------------------------------------------------------------------------
@@ -116,7 +119,8 @@ def _canonicalize_v1(obj: Any) -> Any:
 
 
 def _canonicalize_v2(obj: Any) -> Any:
-    """Schema v2 (DEFAULT). Scalars identical to v1; strings escaped (s: + NFC/CRLF->LF); Fraction explicit."""
+    """Schema v2 (DEFAULT). Scalars identical to v1; strings escaped (s: + NFC/CRLF->LF); Fraction explicit.
+    Unknown types raise TypeError — no silent fallback."""
     if isinstance(obj, bool):
         return "true" if obj else "false"
     if isinstance(obj, int):
@@ -139,12 +143,31 @@ def _canonicalize_v2(obj: Any) -> Any:
         return {k: _canonicalize_v2(v) for k, v in sorted(obj.items())}
     if isinstance(obj, (list, tuple)):
         return [_canonicalize_v2(v) for v in obj]
-    return _V2_STR_PREFIX + _v2_norm_str(str(obj))
+    raise TypeError(f"Unsupported type for canonicalization: {type(obj).__name__}. "
+                    f"Supported: bool, int, float, str, None, Fraction, dict, list, tuple.")
 
 
 def _canonicalize(obj: Any) -> Any:
     """Default canonical form (v2)."""
     return _canonicalize_v2(obj)
+
+
+def _get_canonicalizer(canon_version: str):
+    """Return canonicalizer function for explicit version. No silent fallback."""
+    if canon_version == "2":
+        return _canonicalize_v2
+    elif canon_version == "1":
+        return _canonicalize_v1
+    else:
+        raise ValueError(f"Unsupported canonicalize_version: {canon_version}")
+
+
+def _sha256_dict(obj: Dict, canon_version: str) -> str:
+    """SHA-256 deterministic of a dict with strict canonical form for explicit version."""
+    canon = _get_canonicalizer(canon_version)
+    canonical = canon(obj)
+    serialized = json.dumps(canonical, sort_keys=True, ensure_ascii=True).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
 
 
 # R6-1 — Fields that travel in the bundle but do NOT enter the payload
@@ -163,29 +186,6 @@ def _sealed_payload(bundle: Dict, legacy: bool = False) -> Dict:
         if not (legacy and f in _LEGACY_HASHED_FIELDS)
     )
     return {k: v for k, v in bundle.items() if k not in excluded}
-
-
-def _matching_payload(bundle: Dict, stored: str):
-    for legacy in (False, True):
-        payload = _sealed_payload(bundle, legacy=legacy)
-        if _sha256_dict_matches(payload, stored):
-            return payload, ("legacy" if legacy else "modern")
-    return None, None
-
-
-def _sha256_dict_matches(obj: Dict, stored: str) -> bool:
-    """True if hash of `obj` recomputes under v2 OR v1 (backward-compat)."""
-    return any(
-        _sha256_dict(obj, canon=c) == stored
-        for c in (_canonicalize_v2, _canonicalize_v1)
-    )
-
-
-def _sha256_dict(obj: Dict, canon=_canonicalize) -> str:
-    """SHA-256 deterministic of a dict with strict canonical form."""
-    canonical = canon(obj)
-    serialized = json.dumps(canonical, sort_keys=True, ensure_ascii=True).encode("utf-8")
-    return hashlib.sha256(serialized).hexdigest()
 
 
 def _analysis_projection(bundle_payload: Dict) -> Dict:
@@ -257,7 +257,7 @@ class VerificationResult:
 
 
 # ---------------------------------------------------------------------------
-# R1 — Hash integrity
+# R1 — Hash integrity (using explicit canonicalize_version from bundle)
 # ---------------------------------------------------------------------------
 
 def _check_records_hash(bundle: Dict) -> Tuple[bool, str]:
@@ -266,8 +266,9 @@ def _check_records_hash(bundle: Dict) -> Tuple[bool, str]:
     stored = bundle.get("integrity", {}).get("records_hash", "")
     if not stored:
         return False, "records_hash missing in integrity"
-    if not _sha256_dict_matches({"records": records}, stored):
-        recomputed = _sha256_dict({"records": records})
+    canon_version = bundle.get("canonicalize_version", _CANONICALIZE_VERSION)
+    if _sha256_dict({"records": records}, canon_version) != stored:
+        recomputed = _sha256_dict({"records": records}, canon_version)
         return False, f"records_hash mismatch: recomputed={recomputed[:16]}... stored={stored[:16]}..."
     return True, "records_hash intact"
 
@@ -277,8 +278,9 @@ def _check_context_hash(bundle: Dict) -> Tuple[bool, str]:
     stored = bundle.get("integrity", {}).get("context_hash", "")
     if not stored:
         return False, "context_hash missing in integrity"
-    if not _sha256_dict_matches(context, stored):
-        recomputed = _sha256_dict(context)
+    canon_version = bundle.get("canonicalize_version", _CANONICALIZE_VERSION)
+    if _sha256_dict(context, canon_version) != stored:
+        recomputed = _sha256_dict(context, canon_version)
         return False, f"context_hash mismatch: {recomputed[:16]}... != {stored[:16]}..."
     return True, "context_hash intact"
 
@@ -288,8 +290,9 @@ def _check_catalog_hash(bundle: Dict) -> Tuple[bool, str]:
     stored = bundle.get("integrity", {}).get("catalog_hash", "")
     if not stored:
         return False, "catalog_hash missing in integrity"
-    if not _sha256_dict_matches({"catalog_version": catalog_version}, stored):
-        recomputed = _sha256_dict({"catalog_version": catalog_version})
+    canon_version = bundle.get("canonicalize_version", _CANONICALIZE_VERSION)
+    if _sha256_dict({"catalog_version": catalog_version}, canon_version) != stored:
+        recomputed = _sha256_dict({"catalog_version": catalog_version}, canon_version)
         return False, f"catalog_hash mismatch: {recomputed[:16]}... != {stored[:16]}..."
     return True, "catalog_hash intact"
 
@@ -299,12 +302,10 @@ def _check_analysis_fingerprint(bundle: Dict) -> Tuple[bool, str]:
     stored = bundle.get("integrity", {}).get("analysis_fingerprint", "")
     if not stored:
         return True, "analysis_fingerprint absent — legacy bundle; not required"
-    bundle_stored = bundle.get("integrity", {}).get("bundle_hash", "")
-    payload, _scheme = _matching_payload(bundle, bundle_stored)
-    if payload is None:
-        payload = _sealed_payload(bundle)
+    canon_version = bundle.get("canonicalize_version", _CANONICALIZE_VERSION)
+    payload = _sealed_payload(bundle)
     projection = _analysis_projection(payload)
-    if not _sha256_dict_matches(projection, stored):
+    if _sha256_dict(projection, canon_version) != stored:
         return False, "analysis_fingerprint mismatch — analytical projection changed"
     return True, "analysis_fingerprint intact (analytical projection reproducible)"
 
@@ -314,10 +315,11 @@ def _check_bundle_hash(bundle: Dict) -> Tuple[bool, str]:
     stored = bundle.get("integrity", {}).get("bundle_hash", "")
     if not stored:
         return False, "bundle_hash missing in integrity"
-    payload, scheme = _matching_payload(bundle, stored)
-    if payload is None:
+    canon_version = bundle.get("canonicalize_version", _CANONICALIZE_VERSION)
+    payload = _sealed_payload(bundle)
+    if _sha256_dict(payload, canon_version) != stored:
         return False, "bundle_hash mismatch — bundle modified or corrupted"
-    return True, f"bundle_hash intact (payload scheme: {scheme})"
+    return True, f"bundle_hash intact (canonicalize_version={canon_version})"
 
 
 # ---------------------------------------------------------------------------
@@ -330,12 +332,11 @@ def _check_presentation_fields(bundle: Dict) -> Tuple[bool, str]:
     seeing "bundle_hash intact" would assume the ENTIRE file is sealed.
     This check never fails; it explicitly names what the seal does not
     cover and where each field's authenticity comes from."""
-    stored = bundle.get("integrity", {}).get("bundle_hash", "")
-    _payload, scheme = _matching_payload(bundle, stored)
+    canon_version = bundle.get("canonicalize_version", _CANONICALIZE_VERSION)
+    payload = _sealed_payload(bundle)
     present = [f for f in _PRESENTATION_FIELDS
                if f != "integrity" and f in bundle]
-    if scheme == "legacy":
-        present = [f for f in present if f not in _LEGACY_HASHED_FIELDS]
+    # legacy scheme not applicable with explicit version
     if not present:
         return True, "bundle_hash covers entire file"
 
@@ -362,7 +363,7 @@ def _check_presentation_fields(bundle: Dict) -> Tuple[bool, str]:
 def _check_structure(bundle: Dict) -> Tuple[bool, str]:
     required = [
         "bundle_version", "timestamp", "context",
-        "catalog_version", "schema_version", "records",
+        "catalog_version", "canonicalize_version", "schema_version", "records",
         "counts", "integrity",
     ]
     missing = [f for f in required if f not in bundle]
@@ -371,6 +372,10 @@ def _check_structure(bundle: Dict) -> Tuple[bool, str]:
 
     if bundle.get("bundle_version") not in _BUNDLE_SUPPORTED_VERSIONS:
         return False, f"Unsupported version: {bundle.get('bundle_version')}"
+
+    canon_version = bundle.get("canonicalize_version")
+    if canon_version not in ("1", "2"):
+        return False, f"Invalid canonicalize_version: {canon_version}"
 
     integrity = bundle.get("integrity", {})
     for h in ["bundle_hash", "records_hash", "context_hash", "catalog_hash"]:
@@ -431,11 +436,11 @@ def _check_engine_attestation(bundle: Dict) -> Tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# R5 — Tool log anchoring
+# R5 — Tool log anchoring (F4 fix: verify chain_tip against actual log)
 # ---------------------------------------------------------------------------
 
 def _check_tool_log_anchoring(bundle: Dict) -> Tuple[bool, str]:
-    """R5 — chain_tip_sha256/hmac presence when tool_execution_log present."""
+    """R5 — chain_tip_sha256/hmac presence AND verified against actual log entries."""
     has_log = "tool_execution_log" in bundle
     has_tip = bundle.get("chain_tip_sha256") is not None
     has_tip_hmac = bundle.get("chain_tip_hmac") is not None
@@ -451,6 +456,19 @@ def _check_tool_log_anchoring(bundle: Dict) -> Tuple[bool, str]:
 
     if has_tip_hmac and len(bundle["chain_tip_hmac"]) != 64:
         return False, "chain_tip_hmac invalid format"
+
+    # F4 FIX: Verify chain_tip_sha256 against actual last log entry
+    log = bundle.get("tool_execution_log", [])
+    if log:
+        last_entry = log[-1]
+        actual_tip = last_entry.get("entry_hash")
+        expected_tip = bundle.get("chain_tip_sha256")
+        if actual_tip != expected_tip:
+            return False, (
+                f"chain_tip_sha256 mismatch: bundle declares {expected_tip[:16]}... "
+                f"but last log entry has {actual_tip[:16] if actual_tip else 'None'}... "
+                f"— log truncated or tip forged"
+            )
 
     return True, f"Tool log anchored: chain_tip_sha256={bundle['chain_tip_sha256'][:16]}... hmac={'yes' if has_tip_hmac else 'no'}"
 
@@ -481,7 +499,7 @@ def verify_bundle(
     ok_cc, msg_cc = _check_count_consistency(bundle)
     result.add("R3_COUNT_CONSISTENCY", ok_cc, msg_cc, severity="ERROR" if not ok_cc else "INFO")
 
-    # R1: cryptographic integrity
+    # R1: cryptographic integrity (using explicit canonicalize_version)
     ok_rh, msg_rh = _check_records_hash(bundle)
     result.add("R1_RECORDS_HASH", ok_rh, msg_rh, severity="ERROR" if not ok_rh else "INFO")
 

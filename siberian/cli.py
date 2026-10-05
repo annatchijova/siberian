@@ -304,7 +304,7 @@ def _cmd_verify(args) -> int:
 
 
 def _cmd_import_plaso(args) -> int:
-    """Import Plaso l2tcsv as PRESENT observations into a case file."""
+    """Import Plaso l2tcsv as UNKNOWN (conditions_unverified) observations into a case file."""
     mappings = get_default_mappings()
     if args.mappings:
         with args.mappings.open("r", encoding="utf-8") as f:
@@ -321,7 +321,7 @@ def _cmd_import_plaso(args) -> int:
         case, diagnostics = importer.import_file(
             args.plaso_csv, args.case_file, args.output
         )
-        print(f"Import complete: {diagnostics.observations_created} PRESENT observations created")
+        print(f"Import complete: {diagnostics.unknown_conditions_created} UNKNOWN (conditions_unverified) observations created")
         print(f"  Total rows: {diagnostics.total_rows}")
         print(f"  Matched: {diagnostics.matched_rows}")
         print(f"  Unmatched: {diagnostics.unmatched_rows}")

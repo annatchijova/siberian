@@ -58,7 +58,7 @@ def test_import_creates_present_observations():
     case, diagnostics = importer.import_file(csv_path, template_path, out_path)
 
     assert diagnostics.matched_rows == 2
-    assert diagnostics.observations_created == 2
+    assert diagnostics.unknown_conditions_created == 2
     assert diagnostics.unmatched_rows == 0
 
     # Check enriched case
@@ -67,10 +67,13 @@ def test_import_creates_present_observations():
     net_obs = activities["permitted_network_connection"]["observations"]
     assert len(proc_obs) == 1
     assert proc_obs[0]["artifact_type"] == "security_event_4688"
-    assert proc_obs[0]["status"] == "present"
+    assert proc_obs[0]["status"] == "unknown"
+    assert proc_obs[0]["reason"] == "conditions_unverified"
     assert proc_obs[0]["evidence_ref"].startswith("case://import/plaso/")
     assert len(net_obs) == 1
     assert net_obs[0]["artifact_type"] == "security_event_5156"
+    assert net_obs[0]["status"] == "unknown"
+    assert net_obs[0]["reason"] == "conditions_unverified"
 
 
 def test_unmatched_rows_are_diagnostics_not_states():
@@ -96,7 +99,7 @@ def test_unmatched_rows_are_diagnostics_not_states():
 
 
 def test_duplicate_rows_for_same_artifact_do_not_duplicate_observations():
-    """Multiple matching rows for same catalog entry create one PRESENT."""
+    """Multiple matching rows for same catalog entry create one UNKNOWN."""
     csv_content = """date,time,timezone,MACB,source,sourcetype,type,user,host,short,desc,version,filename,inode,notes,format,extra
 2026-10-01,12:00:00,UTC,M.....,Microsoft-Windows-Security-Auditing,Security,4688,SYSTEM,HOST,Process Created,New process,2,,,,,
 2026-10-01,12:01:00,UTC,M.....,Microsoft-Windows-Security-Auditing,Security,4688,SYSTEM,HOST,Process Created,Another process,2,,,,,
@@ -109,9 +112,11 @@ def test_duplicate_rows_for_same_artifact_do_not_duplicate_observations():
     case, diagnostics = importer.import_file(csv_path, template_path, out_path)
 
     assert diagnostics.matched_rows == 2
-    assert diagnostics.observations_created == 1  # deduplicated
+    assert diagnostics.unknown_conditions_created == 1  # deduplicated
     proc_obs = case["activities"][0]["observations"]
     assert len(proc_obs) == 1
+    assert proc_obs[0]["status"] == "unknown"
+    assert proc_obs[0]["reason"] == "conditions_unverified"
 
 
 def test_malformed_csv_rejected():

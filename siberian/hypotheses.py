@@ -87,6 +87,8 @@ class EvidencePivot:
                         f"hypothesis_impact[{h_id}][{status.value}] = {impact!r} "
                         f"must be one of {valid_impacts}"
                     )
+        # Registry validation deferred to explicit call to avoid circular import
+        # Call validate_against_registry() after module load if needed
 
 
 @dataclass(frozen=True)
@@ -458,6 +460,23 @@ def get_hypothesis(hypothesis_id: str) -> Optional[Hypothesis]:
 
 def list_hypotheses() -> List[Hypothesis]:
     return list(BUILTIN_HYPOTHESES)
+
+
+def validate_evidence_pivots() -> List[str]:
+    """Validate all EvidencePivot hypothesis_impact keys against HYPOTHESIS_REGISTRY.
+    
+    Returns list of error messages (empty if all valid).
+    """
+    errors = []
+    for h in BUILTIN_HYPOTHESES:
+        for pivot in h.evidence_pivots:
+            for h_id in pivot.hypothesis_impact:
+                if h_id not in HYPOTHESIS_REGISTRY:
+                    errors.append(
+                        f"Hypothesis {h.hypothesis_id}: pivot '{pivot.description}' "
+                        f"references unknown hypothesis_id '{h_id}'"
+                    )
+    return errors
 
 
 # ---------------------------------------------------------------------------

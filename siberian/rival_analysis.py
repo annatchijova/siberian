@@ -316,7 +316,11 @@ def generate_counterfactuals(
     hypotheses: List[Hypothesis],
     result: "SilenceAnalysisResult",
 ) -> List[CounterfactualScenario]:
-    """Generate counterfactual scenarios for each hypothesis."""
+    """Generate counterfactual scenarios for each hypothesis.
+
+    Only includes artifacts for which the hypothesis makes an explicit prediction.
+    Artifacts without explicit predictions are omitted from the counterfactual.
+    """
     obs_map: Dict[Tuple[str, str], SilenceRecord] = {
         (r.action, r.expected_artifact.artifact_type): r
         for r in result.records
@@ -330,9 +334,8 @@ def generate_counterfactuals(
             pred = next((p for p in h.predictions if p.applies_to == (action, artifact_type)), None)
             if pred:
                 expected[(action, artifact_type)] = pred.expected_status
-            else:
-                # Default: hypothesis doesn't make specific prediction
-                expected[(action, artifact_type)] = ArtifactStatus.UNKNOWN
+            # No default: hypothesis doesn't make a prediction for this artifact
+            # Omit from counterfactual — silence is not a prediction
 
         resolved = tuple(
             f"{p.target[0]}/{p.target[1]}"

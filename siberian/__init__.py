@@ -53,6 +53,7 @@ from .hypotheses import (
     non_applicable_hypothesis,
     list_hypotheses,
     get_hypothesis,
+    validate_evidence_pivots,
 )
 from .rival_analysis import (
     evaluate_hypothesis,

@@ -40,7 +40,11 @@ class HypothesisAssumption:
     # If this assumption is falsified, the hypothesis loses support
     falsifiable_by: str  # What observation would falsify this assumption
     # Confidence in this assumption (0.0-1.0) based on available evidence
-    confidence: float = 0.5
+    confidence: float
+
+    def __post_init__(self) -> None:
+        if not (0.0 <= self.confidence <= 1.0):
+            raise ValueError(f"confidence must be in [0.0, 1.0], got {self.confidence}")
 
 
 @dataclass(frozen=True)
@@ -52,9 +56,13 @@ class DiscriminatingPrediction:
     # For which (action, artifact_type) this prediction applies
     applies_to: Tuple[str, str]
     # How strongly this prediction discriminates (0.0-1.0)
-    discriminative_power: float = 0.5
+    discriminative_power: float
     # If observed, this would falsify the hypothesis
     falsifies_if: Optional[ArtifactStatus] = None
+
+    def __post_init__(self) -> None:
+        if not (0.0 <= self.discriminative_power <= 1.0):
+            raise ValueError(f"discriminative_power must be in [0.0, 1.0], got {self.discriminative_power}")
 
 
 @dataclass(frozen=True)
@@ -69,6 +77,16 @@ class EvidencePivot:
     # Current status (if already observed)
     current_status: Optional[ArtifactStatus] = None
     current_reason: Optional[ObservationReason] = None
+
+    def __post_init__(self) -> None:
+        valid_impacts = {"favors", "disfavors", "neutral"}
+        for h_id, impact_map in self.hypothesis_impact.items():
+            for status, impact in impact_map.items():
+                if impact not in valid_impacts:
+                    raise ValueError(
+                        f"hypothesis_impact[{h_id}][{status.value}] = {impact!r} "
+                        f"must be one of {valid_impacts}"
+                    )
 
 
 @dataclass(frozen=True)
@@ -98,10 +116,18 @@ class Hypothesis:
 
     @classmethod
     def create(cls, hypothesis_type: HypothesisType, name: str, description: str,
-               version: str = "1.0") -> "Hypothesis":
-        """Factory for new hypotheses with generated ID and timestamp."""
+               version: str = "1.0", hypothesis_id: Optional[str] = None) -> "Hypothesis":
+        """Factory for new hypotheses with stable ID and timestamp.
+        
+        If hypothesis_id is not provided, generates a stable ID from name and type.
+        """
+        if hypothesis_id is None:
+            # Stable ID: lowercase name with underscores + type prefix
+            base = name.lower().replace(" ", "_").replace("-", "_")
+            type_prefix = hypothesis_type.value.split("_")[0][:3]
+            hypothesis_id = f"{type_prefix}_{base}"
         return cls(
-            hypothesis_id=str(uuid4())[:8],
+            hypothesis_id=hypothesis_id,
             hypothesis_type=hypothesis_type,
             version=version,
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -121,7 +147,8 @@ def benign_loss_hypothesis() -> Hypothesis:
         "Benign Loss",
         "Observed absences are explained by ordinary operational factors: "
         "log retention limits, rollover, disabled audit policy, incomplete "
-        "acquisition, or parser limitations. No deliberate deletion required."
+        "acquisition, or parser limitations. No deliberate deletion required.",
+        hypothesis_id="benign_loss",
     )
     return replace(h,
         assumptions=(
@@ -195,7 +222,8 @@ def selective_deletion_hypothesis() -> Hypothesis:
         "Selective Deletion",
         "An attacker with sufficient privileges selectively deleted specific "
         "forensic artifacts to impede investigation. Absence pattern shows "
-        "preference for hard-to-erase artifacts (high erasure difficulty)."
+        "preference for hard-to-erase artifacts (high erasure difficulty).",
+        hypothesis_id="selective_deletion",
     )
     return replace(h,
         assumptions=(
@@ -264,7 +292,8 @@ def sensor_failure_hypothesis() -> Hypothesis:
         "Sensor/Parser Failure",
         "The collection system failed to capture events, or the parser failed "
         "to extract them. This includes agent crashes, buffer overflows, "
-        "parser version mismatches, or format changes."
+        "parser version mismatches, or format changes.",
+        hypothesis_id="sensor_failure",
     )
     return replace(h,
         assumptions=(
@@ -319,7 +348,8 @@ def configuration_gap_hypothesis() -> Hypothesis:
         "Configuration Gap",
         "Required audit policy subcategories were not enabled, or were "
         "enabled but with insufficient scope (e.g., failure auditing only, "
-        "not success). Events were never generated, not deleted."
+        "not success). Events were never generated, not deleted.",
+        hypothesis_id="configuration_gap",
     )
     return replace(h,
         assumptions=(
@@ -368,7 +398,8 @@ def non_applicable_hypothesis() -> Hypothesis:
         "Non-Applicable",
         "The artifact type is not generated on this platform version, "
         "edition, or configuration. E.g., USN journal on non-NTFS volume, "
-        "or event ID not implemented in this Windows build."
+        "or event ID not implemented in this Windows build.",
+        hypothesis_id="non_applicable",
     )
     return replace(h,
         assumptions=(
@@ -440,6 +471,7 @@ class HypothesisEvaluation:
     # Per (action, artifact_type): favors / disfavors / neutral / untested
     observation_support: Dict[Tuple[str, str], str] = field(default_factory=dict)
     # Assumptions that were validated/falsified
+    # NOTE: Currently always "untested" - assumption validation requires external evidence
     assumption_status: Dict[str, str] = field(default_factory=dict)  # validated|falsified|untested
     # Evidence pivots and their current status
     pivot_status: Dict[str, str] = field(default_factory=dict)  # resolved|pending

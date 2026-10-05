@@ -95,24 +95,40 @@ def evaluate_hypothesis(
         else:
             pivot_status[f"{action}/{artifact_type}"] = "pending"
 
-    # Determine overall support level
-    support_counts = {
-        "favors": sum(1 for v in observation_support.values() if v == "favors"),
-        "disfavors": sum(1 for v in observation_support.values() if v == "disfavors"),
-        "neutral": sum(1 for v in observation_support.values() if v == "neutral"),
-        "untested": sum(1 for v in observation_support.values() if v == "untested"),
-    }
+    # Determine overall support level - principled calculation
+    # Weight predictions by discriminative_power
+    weighted_favors = sum(
+        p.discriminative_power
+        for p in hypothesis.predictions
+        if p.applies_to in observation_support and observation_support[p.applies_to] == "favors"
+    )
+    weighted_disfavors = sum(
+        p.discriminative_power
+        for p in hypothesis.predictions
+        if p.applies_to in observation_support and observation_support[p.applies_to] == "disfavors"
+    )
+    weighted_neutral = sum(
+        p.discriminative_power
+        for p in hypothesis.predictions
+        if p.applies_to in observation_support and observation_support[p.applies_to] == "neutral"
+    )
+    weighted_untested = sum(
+        p.discriminative_power
+        for p in hypothesis.predictions
+        if p.applies_to in observation_support and observation_support[p.applies_to] == "untested"
+    )
 
-    total_tested = support_counts["favors"] + support_counts["disfavors"] + support_counts["neutral"]
-    if total_tested == 0:
+    total_weight = weighted_favors + weighted_disfavors + weighted_neutral + weighted_untested
+
+    if total_weight == 0:
         support_level = "untested"
-    elif support_counts["disfavors"] > support_counts["favors"]:
+    elif weighted_disfavors > weighted_favors:
         support_level = "falsified"
-    elif support_counts["favors"] == 0:
+    elif weighted_favors == 0:
         support_level = "weak"
-    elif support_counts["favors"] > support_counts["disfavors"] * 2:
+    elif weighted_favors >= weighted_disfavors * 2 and weighted_favors / total_weight > 0.5:
         support_level = "strong"
-    elif support_counts["favors"] > support_counts["disfavors"]:
+    elif weighted_favors > weighted_disfavors and weighted_favors / total_weight > 0.3:
         support_level = "moderate"
     else:
         support_level = "weak"
@@ -122,16 +138,16 @@ def evaluate_hypothesis(
     if support_level == "falsified":
         summary_parts.append("Hypothesis falsified by observations")
     elif support_level == "strong":
-        summary_parts.append(f"Strong support: {support_counts['favors']} favored, {support_counts['disfavors']} disfavored")
+        summary_parts.append(f"Strong support: {weighted_favors:.1f} weighted favors, {weighted_disfavors:.1f} disfavors")
     elif support_level == "moderate":
-        summary_parts.append(f"Moderate support: {support_counts['favors']} favored, {support_counts['disfavors']} disfavored")
+        summary_parts.append(f"Moderate support: {weighted_favors:.1f} weighted favors, {weighted_disfavors:.1f} disfavors")
     elif support_level == "weak":
-        summary_parts.append(f"Weak support: {support_counts['favors']} favored, {support_counts['disfavors']} disfavored")
+        summary_parts.append(f"Weak support: {weighted_favors:.1f} weighted favors, {weighted_disfavors:.1f} disfavors")
     else:
         summary_parts.append("Insufficient evidence to evaluate")
 
-    if support_counts["untested"]:
-        summary_parts.append(f"{support_counts['untested']} predictions untested")
+    if weighted_untested > 0:
+        summary_parts.append(f"{weighted_untested:.1f} weighted predictions untested")
 
     summary = "; ".join(summary_parts)
 

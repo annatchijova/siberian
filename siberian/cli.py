@@ -16,6 +16,7 @@ from .adversarial_silence import (
 from .bundle import BundleBuilder
 from .casefile import CaseFileError, load_case_file
 from .plaso_import import PlasoImporter, get_default_mappings, PlasoToSiberianMapping
+from .rival_analysis import analyze_rivals, format_rival_report
 
 _NEXT_CHECKS = {
     ObservationReason.CONDITIONS_UNVERIFIED: "document each required applicability condition across the full analysis interval",
@@ -40,7 +41,8 @@ def main(argv: list[str] | None = None) -> int:
         ("explain", "explain statuses and unresolved conditions in a case"),
         ("seal", "produce a tamper-evident sealed bundle from a case file"),
         ("verify", "verify a sealed bundle (stdlib-only verifier)"),
-        ("import-plaso", "import Plaso l2tcsv as PRESENT observations into a case file"),
+        ("import-plaso", "import Plaso l2tcsv as UNKNOWN observations into a case file"),
+        ("rivals", "evaluate rival hypotheses against analysis result"),
     ):
         subparser = commands.add_parser(command, help=help_text)
         subparser.add_argument("case_file", type=Path, help="analyst-authored JSON case file")
@@ -83,6 +85,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "import-plaso":
         return _cmd_import_plaso(args)
+
+    if args.command == "rivals":
+        return _cmd_rivals(args)
 
     try:
         analyzer, activity_count, observation_count = load_case_file(args.case_file)
@@ -342,6 +347,20 @@ def _cmd_import_plaso(args) -> int:
         print(f"Import failed: {e}", file=sys.stderr)
         return 1
 
+    return 0
+
+
+def _cmd_rivals(args) -> int:
+    """Evaluate rival hypotheses against an analysis result from a case file."""
+    try:
+        analyzer, activity_count, observation_count = load_case_file(args.case_file)
+        result = analyzer.analyze()
+    except (CaseFileError, OSError, TypeError, ValueError) as exc:
+        print(f"siberian: error: {_safe_display(str(exc))}", file=sys.stderr)
+        return 2
+
+    rival_result = analyze_rivals(result)
+    print(format_rival_report(rival_result))
     return 0
 
 

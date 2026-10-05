@@ -38,6 +38,29 @@ from .hash_chain import (
     compute_entry_hmac,
     resolve_hmac_key,
 )
+from .hypotheses import (
+    Hypothesis,
+    HypothesisType,
+    HypothesisAssumption,
+    DiscriminatingPrediction,
+    EvidencePivot,
+    HypothesisEvaluation,
+    RivalAnalysisResult,
+    benign_loss_hypothesis,
+    selective_deletion_hypothesis,
+    sensor_failure_hypothesis,
+    configuration_gap_hypothesis,
+    non_applicable_hypothesis,
+    list_hypotheses,
+    get_hypothesis,
+)
+from .rival_analysis import (
+    evaluate_hypothesis,
+    analyze_rivals,
+    format_rival_report,
+    generate_counterfactuals,
+    CounterfactualScenario,
+)
 
 __all__ = [
     "ANALYSIS_SCHEMA_VERSION",
@@ -70,4 +93,23 @@ __all__ = [
     "compute_entry_hash",
     "compute_entry_hmac",
     "resolve_hmac_key",
+    "Hypothesis",
+    "HypothesisType",
+    "HypothesisAssumption",
+    "DiscriminatingPrediction",
+    "EvidencePivot",
+    "HypothesisEvaluation",
+    "RivalAnalysisResult",
+    "CounterfactualScenario",
+    "benign_loss_hypothesis",
+    "selective_deletion_hypothesis",
+    "sensor_failure_hypothesis",
+    "configuration_gap_hypothesis",
+    "non_applicable_hypothesis",
+    "list_hypotheses",
+    "get_hypothesis",
+    "evaluate_hypothesis",
+    "analyze_rivals",
+    "format_rival_report",
+    "generate_counterfactuals",
 ]

@@ -118,10 +118,10 @@ class CaseFileCliTests(unittest.TestCase):
         with contextlib.redirect_stdout(stdout):
             self.assertEqual(main(["analyze", str(path)]), 0)
         counts = json.loads(stdout.getvalue())["counts"]
-        self.assertEqual(counts["expected"], 5)
+        self.assertEqual(counts["expected"], 6)
         self.assertEqual(counts["present"], 2)
         self.assertEqual(counts["confirmed_absent"], 1)
-        self.assertEqual(counts["unknown"], 1)
+        self.assertEqual(counts["unknown"], 2)
         self.assertEqual(counts["out_of_scope"], 1)
 
     def test_explain_includes_absence_supporting_references(self) -> None:

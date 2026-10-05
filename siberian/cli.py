@@ -17,6 +17,7 @@ from .bundle import BundleBuilder
 from .casefile import CaseFileError, load_case_file
 from .plaso_import import PlasoImporter, get_default_mappings, PlasoToSiberianMapping
 from .rival_analysis import analyze_rivals, format_rival_report
+from .mft_parser import parse_mft_file, format_mft_record_summary, MftRecord
 
 _NEXT_CHECKS = {
     ObservationReason.CONDITIONS_UNVERIFIED: "document each required applicability condition across the full analysis interval",
@@ -42,10 +43,18 @@ def main(argv: list[str] | None = None) -> int:
         ("seal", "produce a tamper-evident sealed bundle from a case file"),
         ("verify", "verify a sealed bundle (stdlib-only verifier)"),
         ("import-plaso", "import Plaso l2tcsv as UNKNOWN observations into a case file"),
+        ("import-mft", "parse NTFS $MFT records and produce summary output"),
         ("rivals", "evaluate rival hypotheses against analysis result"),
     ):
         subparser = commands.add_parser(command, help=help_text)
         subparser.add_argument("case_file", type=Path, help="analyst-authored JSON case file")
+
+    # import-mft specific options
+    import_mft_parser = commands.choices["import-mft"]
+    import_mft_parser.add_argument("mft_file", type=Path, help="Path to NTFS $MFT binary file")
+    import_mft_parser.add_argument("--max-records", type=int, default=0, help="max records to parse (0=all)")
+    import_mft_parser.add_argument("--output", type=Path, help="optional JSON output path")
+    import_mft_parser.add_argument("--summary", action="store_true", help="print summary of parsed records")
 
     # import-plaso specific options
     import_parser = commands.choices["import-plaso"]
@@ -85,6 +94,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "import-plaso":
         return _cmd_import_plaso(args)
+
+    if args.command == "import-mft":
+        return _cmd_import_mft(args)
 
     if args.command == "rivals":
         return _cmd_rivals(args)
@@ -362,6 +374,37 @@ def _cmd_rivals(args) -> int:
     rival_result = analyze_rivals(result)
     print(format_rival_report(rival_result))
     return 0
+
+
+def _cmd_import_mft(args) -> int:
+    """Parse NTFS $MFT records and produce summary/JSON output."""
+    try:
+        records = parse_mft_file(args.mft_file, max_records=args.max_records)
+        print(f"Parsed {len(records)} records from {args.mft_file}")
+
+        if args.summary:
+            for record in records[:100]:
+                print(format_mft_record_summary(record))
+            if len(records) > 100:
+                print(f"... and {len(records) - 100} more")
+
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            with args.output.open("w", encoding="utf-8") as f:
+                json.dump([r.to_dict() for r in records], f, ensure_ascii=False, indent=2)
+            print(f"JSON output written to {args.output}")
+
+        if not args.summary and not args.output:
+            # Default: print summary
+            for record in records[:50]:
+                print(format_mft_record_summary(record))
+            if len(records) > 50:
+                print(f"... and {len(records) - 50} more")
+
+        return 0
+    except Exception as e:
+        print(f"siberian: error importing MFT: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

@@ -147,6 +147,23 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
             ("USN journal operations and behavior", "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-usn"),
         ),
     ),
+    ExpectedArtifact(
+        action="file_change",
+        artifact_type="ntfs_mft_entry",
+        description="An NTFS MFT (Master File Table) record contains file metadata including creation, last-modified, MFT-modified, and last-accessed timestamps, plus file name and parent directory.",
+        scope="Windows 10 NTFS volume; each MFT record describes one file/directory on that volume.",
+        required_conditions=(
+            "host_build_matches_documented_catalog_scope",
+            "target_volume_is_ntfs",
+            "mft_acquired_from_volume_image_or_live_acquisition",
+        ),
+        retention="MFT records for deleted files may be reused after deletion; timestamps reflect the last recorded metadata update and may persist after file removal.",
+        interpretation_limit="An MFT record shows metadata for the last state before deletion or overwrite; it does not capture the full event history of the file.",
+        source_refs=(
+            ("NTFS and ReFS boot sector", "https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fat/0b1bc2b3-5f1e-4e5b-9b0e-8a4d3e2f1c0b"),
+            ("MFT record format", "https://github.com/libyal/libfsntfs/blob/main/documentation/MFT.md"),
+        ),
+    ),
 )
 
 

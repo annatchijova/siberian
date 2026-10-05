@@ -18,6 +18,7 @@ from .casefile import CaseFileError, load_case_file
 from .plaso_import import PlasoImporter, get_default_mappings, PlasoToSiberianMapping
 from .rival_analysis import analyze_rivals, format_rival_report
 from .mft_parser import parse_mft_file, format_mft_record_summary, MftRecord
+from .prefetch_parser import parse_prefetch_file, parse_prefetch_directory, format_prefetch_summary, PrefetchRecord
 
 _NEXT_CHECKS = {
     ObservationReason.CONDITIONS_UNVERIFIED: "document each required applicability condition across the full analysis interval",
@@ -44,10 +45,18 @@ def main(argv: list[str] | None = None) -> int:
         ("verify", "verify a sealed bundle (stdlib-only verifier)"),
         ("import-plaso", "import Plaso l2tcsv as UNKNOWN observations into a case file"),
         ("import-mft", "parse NTFS $MFT records and produce summary output"),
+        ("import-prefetch", "parse Windows Prefetch files and produce summary output"),
         ("rivals", "evaluate rival hypotheses against analysis result"),
     ):
         subparser = commands.add_parser(command, help=help_text)
         subparser.add_argument("case_file", type=Path, help="analyst-authored JSON case file")
+
+    # import-prefetch specific options
+    import_prefetch_parser = commands.choices["import-prefetch"]
+    import_prefetch_parser.add_argument("target", type=Path, help="Prefetch file or directory")
+    import_prefetch_parser.add_argument("--max-files", type=int, default=0, help="max files to parse (0=all)")
+    import_prefetch_parser.add_argument("--output", type=Path, help="optional JSON output path")
+    import_prefetch_parser.add_argument("--summary", action="store_true", help="print summary of parsed records")
 
     # import-mft specific options
     import_mft_parser = commands.choices["import-mft"]
@@ -97,6 +106,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "import-mft":
         return _cmd_import_mft(args)
+
+    if args.command == "import-prefetch":
+        return _cmd_import_prefetch(args)
 
     if args.command == "rivals":
         return _cmd_rivals(args)
@@ -374,6 +386,44 @@ def _cmd_rivals(args) -> int:
     rival_result = analyze_rivals(result)
     print(format_rival_report(rival_result))
     return 0
+
+
+def _cmd_import_prefetch(args) -> int:
+    """Parse Windows Prefetch files and produce summary/JSON output."""
+    try:
+        if args.target.is_file():
+            record = parse_prefetch_file(args.target)
+            records = [record]
+        elif args.target.is_dir():
+            records = parse_prefetch_directory(args.target, max_files=args.max_files)
+        else:
+            print(f"siberian: error: {args.target} is not a file or directory", file=sys.stderr)
+            return 2
+
+        print(f"Parsed {len(records)} Prefetch record(s)")
+
+        if args.summary:
+            for record in records[:100]:
+                print(format_prefetch_summary(record))
+            if len(records) > 100:
+                print(f"... and {len(records) - 100} more")
+
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            with args.output.open("w", encoding="utf-8") as f:
+                json.dump([r.to_dict() for r in records], f, ensure_ascii=False, indent=2)
+            print(f"JSON output written to {args.output}")
+
+        if not args.summary and not args.output:
+            for record in records[:50]:
+                print(format_prefetch_summary(record))
+            if len(records) > 50:
+                print(f"... and {len(records) - 50} more")
+
+        return 0
+    except Exception as e:
+        print(f"siberian: error importing Prefetch: {e}", file=sys.stderr)
+        return 2
 
 
 def _cmd_import_mft(args) -> int:

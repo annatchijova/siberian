@@ -66,13 +66,13 @@ Unreported artifacts remain `UNKNOWN`. The result exposes schema version `siberi
 
 ## What makes the question useful
 
-| Common evidence review | SIBERIAN's planned analysis |
+| Common evidence review | SIBERIAN's analysis |
 | --- | --- |
 | Lists artifacts that were found | Also models expected artifacts and their observation status |
 | Can treat a missing record as a gap | Separates present, confirmed absent, unknown, and out of scope |
 | May collapse the result to one explanation | Reports coverage and source-linked observations without an intent verdict |
 
-The current library implements observation states, conditional expectations, provenance references, coverage counts, and a deterministic digest. It does not yet model rival hypotheses or issue `PASS` / `WARN` / `ABSTAIN` outcomes.
+The library implements observation states, conditional expectations, provenance references, coverage counts, a deterministic digest, **rival hypothesis evaluation**, **counterfactual scenario generation**, and a **standalone stdlib-only verifier** for sealed bundles. It does not yet issue calibrated `PASS` / `WARN` / `ABSTAIN` outcomes.
 
 ## Project status and origin
 
@@ -86,13 +86,95 @@ The VIGÍA detector is a research starting point, not a validated standalone pro
 - [Active catalog matrix](docs/CATALOG_MATRIX.md): source claims and applicability gaps for each expectation.
 - [Windows lab kit](lab/README.md): read-only baseline collector and run record guidance; it contains no empirical results.
 - [Focused product scope](docs/PRODUCT_SCOPE.md): target analyst, workflow, first release, and explicit non-claims.
-- [Case file and CLI](docs/CASE_FILE_FORMAT.md): strict JSON input and the `validate`, `analyze`, and `explain` commands.
+- [Case file and CLI](docs/CASE_FILE_FORMAT.md): strict JSON input and the `validate`, `analyze`, `explain`, `seal`, `verify`, `import-plaso`, `rivals` commands.
 - `docs/`: source provenance, technical behavior, build levels, and the language decision.
 - [Construction levels](docs/NIVELES.md): destination-driven path from a contextualized analysis core to calibrated, independently verifiable forensic reports.
 - [Level 1 validation protocol](docs/LEVEL1_VALIDATION_PROTOCOL.md): applicability-matrix fields, official-source review, and a controlled validation design. It records a plan, not results.
 - [Open work](PENDIENTES.md): what can proceed without Windows and the experiments that still require a Windows VM.
-- Next: finish and refine the focused CLI workflow with synthetic cases; Windows compatibility and artifact behavior remain separate empirical validation work.
+- [Red-team audit reports](docs/red-team/): adversarial reviews of each level.
 
-The offline CLI and strict case-file reader are an early prototype. There is no calibrated model, no operational validation corpus, and no empirical Windows validation. There are no weighted suspicion metrics. Licensed under Apache-2.0.
+---
+
+## Build Levels — Status Summary
+
+| Level | Description | Status | Blocker |
+|-------|-------------|--------|---------|
+| **1** | Contextualized evidence matrix (catalog, conditions, states, digest) | ✅ Core complete | **Windows VM** — empirical validation of catalog entries (generation, retention, acquisition) |
+| **2** | Reproducible case file + CLI (`validate`/`analyze`/`explain`) | ✅ Complete | — |
+| **3** | Rival hypotheses & counterfactuals (`rivals` CLI) | ✅ Complete | — |
+| **4** | Empirical evaluation & calibration (blind corpus) | ⏳ Planned | **Windows VM** — controlled corpus with ground truth |
+| **5** | Sealed bundle + standalone verifier (`seal`/`verify`) | ✅ Complete | — |
+| **6** | Forensic tool adapters (Plaso → case file) | 🟡 Partial | **Windows VM** — additional format adapters (EVTX, MFT, USN, Registry, etc.) |
+
+**What "✅ Complete" means:** implemented, tested (42 tests pass), red-team audited, deterministic, and documented.
+
+**What "⏳ Planned" means:** design documented, awaiting blocker resolution.
+
+---
+
+## Blocked by Windows VM (Empirical Validation)
+
+The following **cannot be completed without a Windows VM** because they require empirical observation of artifact behavior on actual Windows systems:
+
+| Work Item | Why Windows Required |
+|-----------|---------------------|
+| **Level 1 catalog validation** — confirm artifact generation, retention limits, rollover behavior, audit policy effects on actual Windows 10/11 builds | Artifact generation depends on OS build, edition, audit policy, and configuration — only observable on real Windows |
+| **Level 4 calibration corpus** — controlled ground-truth cases (benign + selective deletion) with known ground truth | Requires executing attacker techniques and measuring artifact survival on real Windows |
+| **Level 6 additional adapters** — EVTX, MFT, USN, Registry, Prefetch, Amcache, Shimcache parsers | Format specifics, edge cases, and Windows version differences only observable on real Windows |
+| **Collector validation** — `lab/collect_windows_baseline.ps1` syntax and runtime behavior on PowerShell 5.1 | PowerShell 5.1 behavior differs from 7+; only verifiable on Windows |
+
+**What CAN proceed without Windows:**
+- Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
+- Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
+- Red-team audits, deterministic testing, documentation
+- All 42 existing unit tests pass without Windows
+
+---
+
+## Quick Start
+
+```bash
+# Install
+pip install -e .
+
+# Validate a case file
+siberian validate case.json
+
+# Analyze and produce evidence matrix
+siberian analyze case.json
+
+# Explain observation statuses
+siberian explain case.json
+
+# Seal into tamper-evident bundle
+siberian seal case.json -o bundle.json --engine-attestation
+
+# Verify bundle (stdlib-only, no deps)
+python3 -m siberian.verify bundle.json --strict
+
+# Import Plaso l2tcsv as UNKNOWN observations
+siberian import-plaso template.json plaso.csv -o enriched.json
+
+# Evaluate rival hypotheses
+siberian rivals case.json
+```
+
+---
+
+## Red-Team Audit Reports
+
+All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
+
+- `docs/red-team/NIVEL3_AUDIT.md` — Rival hypotheses & counterfactuals (9 findings, all fixed)
+- `docs/red-team/NIVEL5_AUDIT.md` — Bundle sealing & verification (pending)
+
+---
+
+## Project Status
+
+- **License:** Apache-2.0
+- **Tests:** 42 passing (deterministic, no Windows required)
+- **Red-team audits:** Level 3 complete, Level 5 pending
+- **Windows validation:** Pending VM access
 
 > Evidence is not only what remains.

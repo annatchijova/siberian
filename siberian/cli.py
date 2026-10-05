@@ -20,6 +20,7 @@ from .rival_analysis import analyze_rivals, format_rival_report
 from .mft_parser import parse_mft_file, format_mft_record_summary, MftRecord
 from .prefetch_parser import parse_prefetch_file, parse_prefetch_directory, format_prefetch_summary, PrefetchRecord
 from .amcache_parser import parse_amcache_hive, format_amcache_summary, AmcacheEntry
+from .shimcache_parser import parse_shimcache_from_registry, parse_shimcache_binary, format_shimcache_summary, ShimcacheEntry
 
 _NEXT_CHECKS = {
     ObservationReason.CONDITIONS_UNVERIFIED: "document each required applicability condition across the full analysis interval",
@@ -48,10 +49,18 @@ def main(argv: list[str] | None = None) -> int:
         ("import-mft", "parse NTFS $MFT records and produce summary output"),
         ("import-prefetch", "parse Windows Prefetch files and produce summary output"),
         ("import-amcache", "parse Windows Amcache.hve and produce summary output"),
+        ("import-shimcache", "parse AppCompatCache (Shimcache) from SYSTEM hive"),
         ("rivals", "evaluate rival hypotheses against analysis result"),
     ):
         subparser = commands.add_parser(command, help=help_text)
         subparser.add_argument("case_file", type=Path, help="analyst-authored JSON case file")
+
+    # import-shimcache specific options
+    import_shimcache_parser = commands.choices["import-shimcache"]
+    import_shimcache_parser.add_argument("system_hive", type=Path, help="Path to SYSTEM registry hive")
+    import_shimcache_parser.add_argument("--max-entries", type=int, default=0, help="max entries to show (0=all)")
+    import_shimcache_parser.add_argument("--output", type=Path, help="optional JSON output path")
+    import_shimcache_parser.add_argument("--summary", action="store_true", help="print summary of parsed entries")
 
     # import-amcache specific options
     import_amcache_parser = commands.choices["import-amcache"]
@@ -121,6 +130,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "import-amcache":
         return _cmd_import_amcache(args)
+
+    if args.command == "import-shimcache":
+        return _cmd_import_shimcache(args)
 
     if args.command == "rivals":
         return _cmd_rivals(args)
@@ -398,6 +410,36 @@ def _cmd_rivals(args) -> int:
     rival_result = analyze_rivals(result)
     print(format_rival_report(rival_result))
     return 0
+
+
+def _cmd_import_shimcache(args) -> int:
+    """Parse AppCompatCache (Shimcache) from SYSTEM hive."""
+    try:
+        entries = parse_shimcache_from_registry(args.system_hive)
+        print(f"Parsed {len(entries)} Shimcache entries from {args.system_hive}")
+
+        if args.summary:
+            for entry in entries[:args.max_entries or 100]:
+                print(format_shimcache_summary(entry))
+            if args.max_entries > 0 and len(entries) > args.max_entries:
+                print(f"... and {len(entries) - args.max_entries} more")
+
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            with args.output.open("w", encoding="utf-8") as f:
+                json.dump([e.to_dict() for e in entries], f, ensure_ascii=False, indent=2)
+            print(f"JSON output written to {args.output}")
+
+        if not args.summary and not args.output:
+            for entry in entries[:50]:
+                print(format_shimcache_summary(entry))
+            if len(entries) > 50:
+                print(f"... and {len(entries) - 50} more")
+
+        return 0
+    except Exception as e:
+        print(f"siberian: error importing Shimcache: {e}", file=sys.stderr)
+        return 2
 
 
 def _cmd_import_amcache(args) -> int:

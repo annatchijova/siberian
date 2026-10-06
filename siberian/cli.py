@@ -7,6 +7,7 @@ import sys
 import unicodedata
 from datetime import datetime
 from pathlib import Path
+from typing import Dict
 
 from .adversarial_silence import (
     ObservationReason,
@@ -103,6 +104,11 @@ def main(argv: list[str] | None = None) -> int:
     import_prefetch_parser.add_argument("--max-files", type=int, default=0, help="max files to parse (0=all)")
     import_prefetch_parser.add_argument("--output", type=Path, help="optional JSON output path")
     import_prefetch_parser.add_argument("--summary", action="store_true", help="print summary of parsed records")
+    import_prefetch_parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="exit 0 even when some files failed or degraded (still reported on stderr)",
+    )
 
     # import-mft specific options
     import_mft_parser = commands.choices["import-mft"]
@@ -536,16 +542,41 @@ def _cmd_import_amcache(args) -> int:
 def _cmd_import_prefetch(args) -> int:
     """Parse Windows Prefetch files and produce summary/JSON output."""
     try:
+        stats: Dict[str, int] = {}
         if args.target.is_file():
             record = parse_prefetch_file(args.target)
             records = [record]
+            stats = {
+                "total": 1,
+                "parsed": 0 if (record.error or record.degraded) else 1,
+                "errors": 1 if record.error else 0,
+                "degraded": 1 if record.degraded else 0,
+            }
         elif args.target.is_dir():
-            records = parse_prefetch_directory(args.target, max_files=args.max_files)
+            records, stats = parse_prefetch_directory(args.target, max_files=args.max_files)
         else:
             print(f"siberian: error: {args.target} is not a file or directory", file=sys.stderr)
             return 2
 
         print(f"Parsed {len(records)} Prefetch record(s)")
+
+        # A partial parse must never be reported as a clean success.
+        if stats:
+            print(
+                f"  parsed={stats['parsed']} errors={stats['errors']} "
+                f"degraded={stats['degraded']} total={stats['total']}"
+            )
+        for record in records:
+            if record.error:
+                print(f"siberian: {record.filename}: {record.error}", file=sys.stderr)
+            elif record.degraded:
+                print(f"siberian: {record.filename}: {record.degraded}", file=sys.stderr)
+            if record.filename_matches_content is False:
+                print(
+                    f"siberian: {record.filename}: filename hash {record.stem_hash} "
+                    f"does not match content hash {record.prefetch_hash}",
+                    file=sys.stderr,
+                )
 
         if args.summary:
             for record in records[:100]:
@@ -565,6 +596,18 @@ def _cmd_import_prefetch(args) -> int:
             if len(records) > 50:
                 print(f"... and {len(records) - 50} more")
 
+        # Nonzero when any file failed or degraded, so a caller cannot mistake
+        # a partial parse for a complete one. --allow-partial downgrades this
+        # to a warning for batch triage.
+        incomplete = stats.get("errors", 0) + stats.get("degraded", 0)
+        if incomplete and not args.allow_partial:
+            print(
+                f"siberian: {incomplete} of {stats.get('total', len(records))} "
+                f"file(s) failed or degraded; re-run with --allow-partial to "
+                f"accept a partial result",
+                file=sys.stderr,
+            )
+            return 1
         return 0
     except Exception as e:
         print(f"siberian: error importing Prefetch: {e}", file=sys.stderr)

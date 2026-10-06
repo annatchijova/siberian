@@ -195,7 +195,7 @@ def _ntfs_timestamp_to_datetime(ts: int) -> Optional[datetime]:
     units, so whole microseconds are ts // 10 with the sub-microsecond
     remainder dropped deterministically.
     """
-    if ts == 0:
+    if ts <= 0:
         return None
     if ts < 0:
         return None

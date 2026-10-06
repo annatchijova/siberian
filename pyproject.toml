@@ -10,7 +10,26 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
+# Optional dependencies, required only by the Nivel 6 artifact adapters.
+# The core (case files, analysis, rivals, sealing, verification, Plaso import)
+# is stdlib-only and the standalone verifier must stay that way.
+#
+#   python-registry  hive access for import-amcache / import-shimcache /
+#                    import-shellbags. Without it those commands report an
+#                    explicit failure and recover nothing; they never guess.
+#   pyscca           libyal libscca bindings, via libyal-wheel. Required for
+#                    Prefetch structural fields (import-prefetch). MAM
+#                    (Windows 10+) payloads are XPRESS-compressed and cannot be
+#                    read without it. Without it records are marked degraded.
+#
+# Install with:  pip install -e '.[adapters]'
 dependencies = []
+
+[project.optional-dependencies]
+adapters = [
+    "python-registry>=1.5.0",
+    "pyscca>=20221011",
+]
 
 [project.scripts]
 siberian = "siberian.cli:main"

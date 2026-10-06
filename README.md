@@ -82,7 +82,13 @@ The VIGÍA detector is a research starting point, not a validated standalone pro
 
 ## Current package and next work
 
-- `siberian/`: dependency-free analysis library and source-linked conditional Windows catalog.
+- `siberian/`: analysis library and source-linked conditional Windows catalog. The **core is stdlib-only**; the Level 6 artifact adapters (`import-amcache`, `import-shimcache`, `import-shellbags`, `import-prefetch`) need optional extras:
+
+```bash
+pip install -e '.[adapters]'   # python-registry, pyscca
+```
+
+  Without them those commands report an explicit failure or a `degraded` record and recover nothing. They never substitute a guess, and `seal` / `verify` remain dependency-free.
 - [Active catalog matrix](docs/CATALOG_MATRIX.md): source claims and applicability gaps for each expectation.
 - [Windows lab kit](lab/README.md): read-only baseline collector and run record guidance; it contains no empirical results.
 - [Focused product scope](docs/PRODUCT_SCOPE.md): target analyst, workflow, first release, and explicit non-claims.
@@ -127,7 +133,7 @@ The following **cannot be completed without a Windows VM** because they require 
 - Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
 - Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
 - Red-team audits, deterministic testing, documentation
-- All 89 unit tests pass without Windows
+- All 163 unit tests pass without Windows
 
 ---
 
@@ -174,20 +180,36 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 
 - `docs/red-team/NIVEL3_AUDIT.md` — Rival hypotheses & counterfactuals (9 findings, all fixed)
 - `docs/red-team/NIVEL5_AUDIT.md` — Bundle sealing & verification (pending)
-- `docs/red-team/NIVEL6_MFT_AUDIT.md` — MFT parser (7 findings: 1 critical, 2 high, 2 medium, 2 low/info; all fixed, 2 claims refuted and withdrawn)
+- `docs/red-team/NIVEL6_MFT_AUDIT.md` — MFT parser (7 findings; 2 claims refuted, one of them the reviewer's own circular probe)
+- `docs/red-team/NIVEL6_PREFETCH_AUDIT.md` — Prefetch parser (8 findings; validated against 225 real artifacts, and the MAM path was found to be already correct)
+- `docs/red-team/NIVEL6_AMCACHE_AUDIT.md` — Amcache parser (9 findings; arbitrary bytes were being rendered as year-3204 dates)
+- `docs/red-team/NIVEL6_SHIMCACHE_AUDIT.md` — Shimcache parser (7 findings; 2 hypotheses refuted by experiment)
+- `docs/red-team/NIVEL6_SHELLBAGS_AUDIT.md` — Shellbags parser (9 findings; produced the fabricated path `C:\Users\Bob\Deskto`)
 
-> A green suite is not the same as a correct parser. The MFT parser shipped with
-> six passing tests while reporting the file's **creation** time as its
-> modification time, because the fixture's timestamps were all zero. Read the
-> audit, not the test count.
+> A green suite is not the same as a correct parser. Across these five parsers,
+> every one shipped with passing tests while doing something wrong:
+>
+> - **MFT** reported a file's *creation* time as its modification time, because
+>   the fixture's timestamps were all zero.
+> - **Prefetch** decoded filename characters as a FILETIME execution timestamp,
+>   and its version assertion was `is not None or is not None`.
+> - **Amcache** rendered `bytes(range(64))` as the date **3204-10-05**, and
+>   exited 0 for a hive that did not exist.
+> - **Shimcache** consumed an unrelated registry value, then blamed the artifact
+>   format for the failure.
+> - **Shellbags** returned `C:\Users\Bob\Deskto` for `Desktop`, invented view
+>   and sort modes for ~25% of entries, and recovered 0 of 200 folders from a
+>   realistically shaped hive.
+>
+> Read the audits, not the test count.
 
 ---
 
 ## Project Status
 
 - **License:** Apache-2.0
-- **Tests:** 89 passing (deterministic, no Windows required)
-- **Red-team audits:** Level 3 complete, Level 6 (MFT) complete, Level 5 pending
+- **Tests:** 163 passing (deterministic, no Windows required)
+- **Red-team audits:** Level 3 complete, Level 6 complete (all five shipped adapters), Level 5 pending
 - **Artifact parsers shipped:** Plaso l2tcsv (imports into case file), MFT, Prefetch, Amcache, Shimcache, Shellbags (summary/JSON only — see caveat)
 - **Windows validation:** Pending VM access; no parser has been validated against a real artifact
 

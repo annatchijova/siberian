@@ -88,7 +88,7 @@ class ShimcacheEntry:
 
 def _filetime(ts: int) -> Optional[datetime]:
     """Convert NTFS FILETIME to datetime."""
-    if ts == 0:
+    if ts <= 0:
         return None
     try:
         microseconds = ts // 10

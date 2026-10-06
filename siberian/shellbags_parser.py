@@ -31,13 +31,17 @@ _FILETIME_EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
 
 @dataclass
 class ShellbagEntry:
-    """Parsed Shellbags entry."""
+    """One folder path recovered from a Shellbags value.
+
+    Only the path is reported. View mode, sort mode and an "accessed"
+    timestamp were previously invented by matching arbitrary bytes against
+    lookup tables; those fields are gone rather than kept as unverified
+    guesses. See docs/red-team/NIVEL6_SHELLBAGS_AUDIT.md.
+    """
+
     bag_type: str  # "BagMRU" or "Bags"
     key_path: str  # Registry key path
     folder_path: Optional[str] = None
-    view_mode: Optional[str] = None
-    sort_mode: Optional[str] = None
-    timestamp: Optional[datetime] = None
     raw_value_name: str = ""
     raw_value_size: int = 0
     error: Optional[str] = None
@@ -47,9 +51,6 @@ class ShellbagEntry:
             "bag_type": self.bag_type,
             "key_path": self.key_path,
             "folder_path": self.folder_path,
-            "view_mode": self.view_mode,
-            "sort_mode": self.sort_mode,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "raw_value_name": self.raw_value_name,
             "raw_value_size": self.raw_value_size,
             "error": self.error,
@@ -82,7 +83,7 @@ _SORT_MODE_MAP = {
 
 def _filetime(ts: int) -> Optional[datetime]:
     """Convert NTFS FILETIME to datetime."""
-    if ts == 0:
+    if ts <= 0:
         return None
     try:
         microseconds = ts // 10
@@ -91,149 +92,245 @@ def _filetime(ts: int) -> Optional[datetime]:
         return None
 
 
-def _extract_path_from_binary(data: bytes) -> Optional[str]:
-    """Try to extract a folder path from binary blob."""
-    # Look for UTF-16-LE strings that contain ':\\' or '\\\\'
-    i = 0
-    while i < len(data) - 4:
-        try:
-            end = data.find(b'\x00\x00', i)
-            if end == -1 or end > i + 2048:
-                i += 2
+def _extract_utf16_paths(data: bytes, max_chars: int = 1024) -> List[Tuple[int, str]]:
+    """Extract UTF-16-LE path strings from a binary blob.
+
+    Alignment matters. UTF-16-LE code units are two bytes, so a scan must start
+    on an even offset and must stop on an even offset; otherwise the slice has an
+    odd length and decoding silently drops the final character.
+
+    The previous implementation searched for b"\x00\x00" from a moving offset
+    and sliced to wherever that landed. On an odd offset it produced
+    "C:\\Users\\Bob\\Deskto" for "C:\\Users\\Bob\\Desktop" -- a wrong
+    path that still looks like a real one -- and it missed paths preceded by
+    other bytes almost every time (199 of 200 in testing).
+
+    Returns (offset, path) pairs. Order is stable: ascending offset.
+    """
+    # A registry value's payload may begin at either byte alignment relative to
+    # the original structure, so both parities are scanned and identical strings
+    # are reported once.
+    results: List[Tuple[int, str]] = []
+    seen: set = set()
+    for parity in (0, 1):
+        i = parity
+        while i + 1 < len(data):
+            chars: List[str] = []
+            j = i
+            while j + 1 < len(data) and len(chars) < max_chars:
+                unit = data[j] | (data[j + 1] << 8)
+                if unit == 0:
+                    break
+                # Reject control characters: a real path is printable text.
+                if unit < 0x20 or unit in (0xFFFE, 0xFFFF):
+                    break
+                chars.append(chr(unit))
+                j += 2
+
+            text = "".join(chars)
+            if len(text) > 3 and _looks_like_path(text) and text not in seen:
+                seen.add(text)
+                results.append((i, text))
+                i = j + 2
                 continue
-            candidate = data[i:end].decode('utf-16-le', errors='ignore').strip('\x00')
-            if len(candidate) > 3 and (candidate[1:3] == ':\\' or candidate.startswith('\\\\')):
-                return candidate
-            i = end + 2
-        except (UnicodeDecodeError, IndexError):
             i += 2
-    return None
+    results.sort(key=lambda pair: pair[0])
+    return results
 
 
-def parse_shellbags_from_registry(hive_path: Path, bag_type: str = "BagMRU") -> List[ShellbagEntry]:
-    """
-    Parse Shellbags from a registry hive.
-    
+def _looks_like_path(text: str) -> bool:
+    """True when the text plausibly is a filesystem path."""
+    if len(text) < 4:
+        return False
+    if text.startswith("\\\\"):
+        return True
+    # Drive-letter form: "C:\..." or "C:/..."
+    return len(text) > 3 and text[1] == ":" and text[2] in ("\\", "/")
+
+
+def _extract_path_from_binary(data: bytes) -> Optional[str]:
+    """Return the first path in the blob, or None."""
+    found = _extract_utf16_paths(data)
+    return found[0][1] if found else None
+
+
+def parse_shellbags_from_registry(
+    hive_path: Path, bag_type: str = "BagMRU"
+) -> List[ShellbagEntry]:
+    """Recover folder paths from Shellbags values in a user registry hive.
+
+    Both tree levels are read. In a real hive the per-entry data lives in the
+    numbered subkeys *below* ``BagMRU``/``Bags``, not on those keys themselves;
+    the previous revision read only the latter and so recovered nothing from a
+    real hive. Both levels are now read.
+
+    Only folder paths are reported. No view mode, sort mode or timestamp is
+    emitted: those were previously matched by scanning arbitrary bytes against
+    lookup tables, which produced confident values with no positional
+    justification.
+
     Args:
-        hive_path: Path to registry hive (NTUSER.DAT or USRCLASS.DAT)
-        bag_type: "BagMRU" or "Bags" - which subkey to parse
-    
+        hive_path: Path to a registry hive (NTUSER.DAT or UsrClass.dat)
+        bag_type: "BagMRU" or "Bags"
+
     Returns:
-        List of ShellbagEntry objects
+        List of ShellbagEntry. Failures are returned as a single entry carrying
+        an explicit error rather than as a silent empty result.
     """
+    hive_path = Path(hive_path)
     try:
         from Registry import Registry
     except ImportError:
-        return [ShellbagEntry(bag_type=bag_type, key_path="", error="python-registry not installed")]
+        return [ShellbagEntry(
+            bag_type=bag_type,
+            key_path="",
+            error="python-registry not installed: pip install python-registry",
+        )]
+
+    try:
+        hive = Registry.Registry(str(hive_path))
+    except Exception as exc:
+        return [ShellbagEntry(
+            bag_type=bag_type, key_path="", error=f"Cannot open hive: {exc}"
+        )]
+
+    try:
+        root = hive.root()
+    except Exception as exc:
+        return [ShellbagEntry(
+            bag_type=bag_type, key_path="", error=f"Cannot read hive root: {exc}"
+        )]
+
+    # Locations that hold Shellbags. Classes-based paths live in UsrClass.dat.
+    search_roots = [
+        r"Software\Microsoft\Windows\Shell",
+        r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell",
+    ]
 
     entries: List[ShellbagEntry] = []
+    searched: List[str] = []
+    found_roots = 0
 
-    try:
-        reg = Registry.Registry(str(hive_path))
-    except Exception as e:
-        return [ShellbagEntry(bag_type=bag_type, key_path="", error=f"Cannot open hive: {e}")]
+    for search_root in search_roots:
+        node = _resolve(root, search_root)
+        if node is None:
+            continue
+        found_roots += 1
+        searched.append(search_root)
+        _collect(node, search_root, bag_type, entries, depth=0)
 
-    def _walk_shell_keys(key, parent_path: str, target_subkey: str) -> None:
-        for subkey in key.subkeys():
-            name = subkey.name()
-            current_path = f"{parent_path}\\{name}"
+    if found_roots == 0:
+        return [ShellbagEntry(
+            bag_type=bag_type,
+            key_path="",
+            error=(
+                f"No Shell\\{bag_type} location found. Looked under: "
+                + "; ".join(search_roots)
+            ),
+        )]
 
-            if name == target_subkey:
-                # This is the BagMRU or Bags subkey - iterate its values
-                for value in subkey.values():
-                    data = value.value()
-                    if not isinstance(data, bytes):
-                        continue
-                    # Try to extract info from this binary value
-                    folder = _extract_path_from_binary(data)
-                    # Try to read view mode (usually at some offset)
-                    view_mode = None
-                    sort_mode = None
-                    try:
-                        # Look for view mode byte in data
-                        for offset in [4, 8, 12, 16, 20, 24, 28, 32, 36, 40]:
-                            if offset < len(data):
-                                vm = data[offset]
-                                if vm in _VIEW_MODE_MAP:
-                                    view_mode = _VIEW_MODE_MAP[vm]
-                                    break
-                        for offset in [4, 8, 12, 16, 20, 24, 28, 32, 36, 40]:
-                            if offset < len(data):
-                                sm = data[offset]
-                                if sm in _SORT_MODE_MAP:
-                                    sort_mode = _SORT_MODE_MAP[sm]
-                                    break
-                    except (IndexError, TypeError):
-                        pass
-
-                    # Extract FILETIME if data is large enough
-                    timestamp = None
-                    if len(data) >= 8:
-                        try:
-                            ts = struct.unpack_from("<Q", data, len(data) - 8)[0]
-                            ft = _filetime(ts)
-                            if ft and 2000 <= ft.year <= 2030:
-                                timestamp = ft
-                        except (struct.error, ValueError):
-                            pass
-
-                    entries.append(ShellbagEntry(
-                        bag_type=target_subkey,
-                        key_path=current_path,
-                        folder_path=folder,
-                        view_mode=view_mode,
-                        sort_mode=sort_mode,
-                        timestamp=timestamp,
-                        raw_value_name=value.name(),
-                        raw_value_size=len(data),
-                    ))
-
-            # Recurse into subkeys
-            _walk_shell_keys(subkey, current_path, target_subkey)
-
-    try:
-        root = reg.root()
-        # Search for Shell keys at common locations
-        search_paths = [
-            "Software\\Microsoft\\Windows\\Shell",
-            "Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell",
-        ]
-        for search_path in search_paths:
-            try:
-                target = root
-                for part in search_path.split("\\"):
-                    found = None
-                    for sk in target.subkeys():
-                        if sk.name() == part:
-                            found = sk
-                            break
-                    if found is None:
-                        target = None
-                        break
-                    target = found
-                if target:
-                    _walk_shell_keys(target, search_path, bag_type)
-            except Exception:
-                continue
-
-        if not entries:
-            return [ShellbagEntry(bag_type=bag_type, key_path="", error=f"No {bag_type} entries found in {hive_path}")]
-
-    except Exception as e:
-        return [ShellbagEntry(bag_type=bag_type, key_path="", error=f"Error parsing hive: {e}")]
+    if not entries:
+        return [ShellbagEntry(
+            bag_type=bag_type,
+            key_path="",
+            error=(
+                f"No folder paths recovered from {bag_type} under "
+                + "; ".join(searched)
+                + ". The keys exist but no UTF-16 path was decoded from their "
+                "binary values; this parser does not decode the shellbag "
+                "record layout."
+            ),
+        )]
 
     return entries
+
+
+# Guard against a pathological or cyclic hive.
+_MAX_DEPTH = 8
+
+
+def _collect(node, path: str, bag_type: str, entries: List[ShellbagEntry], depth: int) -> None:
+    """Read values at this level and descend, when this node is a bag key."""
+    if depth > _MAX_DEPTH:
+        return
+
+    for value in _safe(node.values):
+        try:
+            data = value.value()
+            name = value.name()
+        except Exception:
+            continue
+        if not isinstance(data, bytes) or len(data) < 8:
+            continue
+        # Skip the well-known bookkeeping values that are not entry records.
+        if name in ("MRUList", "NodeSlotCapacity"):
+            continue
+        folder = _extract_path_from_binary(data)
+        if not folder:
+            continue
+        entries.append(ShellbagEntry(
+            bag_type=bag_type,
+            key_path=path,
+            folder_path=folder,
+            raw_value_name=name,
+            raw_value_size=len(data),
+        ))
+
+    for subkey in _safe(node.subkeys):
+        try:
+            child_name = subkey.name()
+        except Exception:
+            continue
+        child_path = f"{path}\\{child_name}"
+        # The bag keys hold entry data both directly and one level down.
+        if child_name == bag_type or _is_bag_child(child_name):
+            _collect(subkey, child_path, bag_type, entries, depth + 1)
+
+
+def _is_bag_child(name: str) -> bool:
+    """BagMRU/Bags children are hexadecimal slot indices ("0", "1a", "2f", ...)."""
+    if not name:
+        return False
+    try:
+        int(name, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _resolve(root, path: str):
+    """Walk a backslash-separated registry path, returning None if absent."""
+    node = root
+    for part in path.split("\\"):
+        if not part:
+            continue
+        nxt = None
+        for sk in _safe(node.subkeys):
+            try:
+                if sk.name() == part:
+                    nxt = sk
+                    break
+            except Exception:
+                continue
+        if nxt is None:
+            return None
+        node = nxt
+    return node
+
+
+def _safe(getter) -> List[Any]:
+    try:
+        return list(getter())
+    except Exception:
+        return []
 
 
 def format_shellbag_summary(entry: ShellbagEntry) -> str:
     """Format one entry as a human-readable summary line."""
     if entry.error:
         return f"ERROR: {entry.error}"
-    folder = entry.folder_path or "<unknown path>"
-    view = entry.view_mode or "?"
-    sort = entry.sort_mode or "?"
-    ts = entry.timestamp.isoformat() if entry.timestamp else "unknown"
-    return f"{folder:50s} | view: {view:12s} | sort: {sort:20s} | accessed: {ts}"
+    folder = entry.folder_path or "<no path recovered>"
+    return f"{folder:64s} | {entry.bag_type:8s} | {entry.key_path}"
 
 
 if __name__ == "__main__":

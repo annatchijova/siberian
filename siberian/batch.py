@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from .export_seal import EXPORT_KIND, MANIFEST_KIND, seal_export
 from .adapter_provenance import (
     PROVENANCE_VERSION,
     AMCACHE_SPEC,
@@ -494,9 +495,14 @@ def run_batch(
         outcome = _process_one(adapter, source, out_path, limits)
         result.outcomes.append(outcome)
 
+    # The manifest is the batch's citable artifact, so it is sealed too: it is
+    # what ties every per-input output to the run that produced it.
     manifest_path = out_dir / manifest_name
     manifest_path.write_text(
-        json.dumps(result.to_dict(), ensure_ascii=False, indent=2, sort_keys=True),
+        json.dumps(
+            seal_export(result.to_dict(), kind=MANIFEST_KIND),
+            ensure_ascii=False, indent=2, sort_keys=True,
+        ),
         encoding="utf-8",
     )
     result.manifest_path = str(manifest_path)
@@ -542,7 +548,10 @@ def _process_one(
     try:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            json.dumps(
+                seal_export(payload, kind=EXPORT_KIND),
+                ensure_ascii=False, indent=2, sort_keys=True,
+            ),
             encoding="utf-8",
         )
     except OSError as exc:

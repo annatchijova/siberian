@@ -23,6 +23,7 @@ from .prefetch_parser import parse_prefetch_file, parse_prefetch_directory, form
 from .amcache_parser import parse_amcache_hive, format_amcache_summary, AmcacheEntry
 from .shimcache_parser import parse_shimcache_from_registry, parse_shimcache_binary, format_shimcache_summary, ShimcacheEntry
 from .shellbags_parser import parse_shellbags_from_registry, format_shellbag_summary, ShellbagEntry
+from .export_seal import EXPORT_SEAL_VERSION, seal_export
 from .adapter_provenance import (
     MFT_SPEC,
     PREFETCH_SPEC,
@@ -506,7 +507,7 @@ def _cmd_import_plaso(args) -> int:
                 },
             )
             with args.diagnostics.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(seal_export(payload), f, ensure_ascii=False, indent=2)
             print(f"  Diagnostics: {args.diagnostics}")
 
         if diagnostics.errors:
@@ -561,7 +562,7 @@ def _cmd_import_shellbags(args) -> int:
                 "entries": [e.to_dict() for e in entries],
             }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(seal_export(payload), f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -671,7 +672,7 @@ def _cmd_import_shimcache(args) -> int:
                 "entries": [e.to_dict() for e in entries],
             }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(seal_export(payload), f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -746,7 +747,7 @@ def _cmd_import_amcache(args) -> int:
                 "degraded": result.degraded,
             }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(seal_export(payload), f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -837,7 +838,7 @@ def _cmd_import_prefetch(args) -> int:
                 "records": [r.to_dict() for r in records],
             }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(seal_export(payload), f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -942,7 +943,7 @@ def _cmd_import_mft(args) -> int:
                 "records": [r.to_dict() for r in records],
             }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(seal_export(payload), f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:

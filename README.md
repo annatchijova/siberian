@@ -133,7 +133,7 @@ The following **cannot be completed without a Windows VM** because they require 
 - Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
 - Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
 - Red-team audits, deterministic testing, documentation
-- All 252 unit tests pass without Windows
+- All 284 unit tests pass without Windows
 
 ---
 
@@ -157,6 +157,10 @@ siberian seal case.json -o bundle.json --engine-attestation
 
 # Verify bundle (stdlib-only, no deps)
 python3 -m siberian.verify bundle.json --strict
+
+# Verify an adapter export WITHOUT SIBERIAN INSTALLED
+# (copy this one file; it imports nothing from the package)
+python3 forensics/verify_siberian.py out/0000_*.json --rehash-source
 
 # Import Plaso l2tcsv as UNKNOWN observations
 siberian import-plaso template.json plaso.csv -o enriched.json
@@ -197,6 +201,7 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 - `docs/red-team/NIVEL6_AMCACHE_AUDIT.md` — Amcache parser (9 findings; arbitrary bytes were being rendered as year-3204 dates)
 - `docs/red-team/NIVEL6_SHIMCACHE_AUDIT.md` — Shimcache parser (7 findings; 2 hypotheses refuted by experiment)
 - `docs/red-team/NIVEL6_SHELLBAGS_AUDIT.md` — Shellbags parser (9 findings; produced the fabricated path `C:\Users\Bob\Deskto`)
+- `docs/EXPORT_VERIFICATION.md` — how to verify an export without SIBERIAN, and what verification does not prove
 
 > A green suite is not the same as a correct parser. Across these five parsers,
 > every one shipped with passing tests while doing something wrong:
@@ -220,11 +225,12 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 ## Project Status
 
 - **License:** Apache-2.0
-- **Tests:** 252 passing (deterministic, no Windows required)
+- **Tests:** 284 passing (deterministic, no Windows required)
 - **Red-team audits:** Level 3 complete, Level 6 complete (all five shipped adapters), Level 5 pending
 - **Artifact parsers shipped:** Plaso l2tcsv (imports into case file), MFT, Prefetch, Amcache, Shimcache, Shellbags (summary/JSON only — see caveat)
 - **Provenance:** every adapter records the source digest (a sorted manifest digest for directories), the parser name and version, its ordered transformations, and its declared limitations
 - **Batch (`siberian batch`):** runs one adapter over many artifacts, one output file per artifact plus a manifest. It refuses to start rather than mix sources or overwrite another case's export, isolates each input's failure, and discloses any limit that truncated the run
+- **Independent verification:** every export is sealed (`provenance_hash`, `payload_hash`, `export_hash`). `forensics/verify_siberian.py` re-derives them from the documented protocol alone — one stdlib-only file that imports nothing from SIBERIAN, so an analyst can verify evidence without trusting the tool that produced it. See [docs/EXPORT_VERIFICATION.md](docs/EXPORT_VERIFICATION.md)
 - **Windows validation:** Pending VM access; no parser has been validated against a real artifact
 
 > Evidence is not only what remains.

@@ -428,3 +428,78 @@ def test_parse_mft_file_stats_is_optional(tmp_path):
     mft = _mft_with(tmp_path, 3)
     assert len(parse_mft_file(mft)) == 3
     assert len(parse_mft_file(mft, max_records=1)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Exports are sealed
+#
+# An export is the artifact an analyst hands to someone else. Provenance without
+# an integrity block states which parser produced the file but does not tie the
+# contents to that claim: editing a record afterwards leaves every provenance
+# field intact and self-consistent.
+# ---------------------------------------------------------------------------
+
+def test_export_json_is_sealed(tmp_path):
+    import struct
+
+    from siberian.export_seal import is_sealed
+
+    mft = tmp_path / "MFT"
+    rec = bytearray(1024)
+    rec[0:4] = b"FILE"
+    struct.pack_into("<H", rec, 16, 1)
+    struct.pack_into("<H", rec, 18, 1)
+    struct.pack_into("<H", rec, 20, 56)
+    struct.pack_into("<I", rec, 24, 1024)
+    struct.pack_into("<I", rec, 28, 1024)
+    mft.write_bytes(bytes(rec))
+
+    out = tmp_path / "mft.json"
+    cli._cmd_import_mft(_ns(mft_file=mft, output=out))
+    payload = json.loads(out.read_text())
+    assert is_sealed(payload), "adapter exports must carry an integrity block"
+    assert payload["kind"] == "siberian-adapter-export"
+    assert len(payload["integrity"]["export_hash"]) == 64
+
+
+def test_prefetch_export_is_sealed(tmp_path):
+    from siberian.export_seal import is_sealed
+
+    d = tmp_path / "pf"
+    d.mkdir()
+    (d / "A.EXE-00000000.pf").write_bytes(b"MAM\x04" + b"\x00" * 300)
+    out = tmp_path / "pf.json"
+    cli._cmd_import_prefetch(_ns(target=d, output=out, allow_partial=True))
+    assert is_sealed(json.loads(out.read_text()))
+
+
+def test_batch_outputs_and_manifest_are_sealed(tmp_path):
+    from siberian.batch import run_batch
+    from siberian.export_seal import is_sealed
+
+    src = tmp_path / "A.EXE-00000000.pf"
+    src.write_bytes(b"MAM\x04" + b"\x00" * 300)
+    out_dir = tmp_path / "out"
+    result = run_batch("prefetch", [src], out_dir)
+
+    manifest = json.loads(Path(result.manifest_path).read_text())
+    assert is_sealed(manifest)
+    assert manifest["kind"] == "siberian-batch-manifest"
+
+    for produced in out_dir.glob("0*.json"):
+        assert is_sealed(json.loads(produced.read_text()))
+
+
+def test_sealed_export_still_records_provenance(tmp_path):
+    """Sealing must not displace the provenance it protects."""
+    from siberian.export_seal import is_sealed
+
+    src = tmp_path / "A.EXE-00000000.pf"
+    src.write_bytes(b"MAM\x04" + b"\x00" * 300)
+    from siberian.batch import run_batch
+
+    res = run_batch("prefetch", [src], tmp_path / "out")
+    payload = json.loads(Path(res.outcomes[0].output).read_text())
+    assert is_sealed(payload)
+    assert payload["provenance"]["parser"]["name"] == "siberian.prefetch_parser"
+    assert payload["provenance"]["limitations"]

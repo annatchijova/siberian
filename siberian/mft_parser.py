@@ -492,7 +492,11 @@ def detect_mft_record_size(first_record: bytes) -> int:
     return 1024
 
 
-def parse_mft_file(mft_path: Path, max_records: int = 0) -> List[MftRecord]:
+def parse_mft_file(
+    mft_path: Path,
+    max_records: int = 0,
+    stats: Optional[Dict[str, Any]] = None,
+) -> List[MftRecord]:
     """Parse $MFT binary file and return list of parsed records.
 
     The record size is detected from the volume's first record rather than
@@ -501,6 +505,9 @@ def parse_mft_file(mft_path: Path, max_records: int = 0) -> List[MftRecord]:
     Args:
         mft_path: Path to $MFT file
         max_records: Maximum number of records to parse (0 = all)
+        stats: optional dict, populated with the run's accounting so a
+            truncated parse is distinguishable from a complete one. Respecting a
+            limit is not the same as silently dropping the remainder.
 
     Returns:
         List of MftRecord objects, in file order. Records that failed to parse
@@ -517,6 +524,14 @@ def parse_mft_file(mft_path: Path, max_records: int = 0) -> List[MftRecord]:
             f.seek(0)
 
             record_index = 0
+            available: Optional[int] = None
+            try:
+                file_size = f.seek(0, 2)
+                f.seek(0)
+                available = file_size // record_size
+            except OSError:
+                available = None
+
             while True:
                 chunk = f.read(record_size)
                 if not chunk:
@@ -542,6 +557,18 @@ def parse_mft_file(mft_path: Path, max_records: int = 0) -> List[MftRecord]:
                 record_index += 1
                 if max_records > 0 and record_index >= max_records:
                     break
+
+        if stats is not None:
+            processed = len(records)
+            stats["available"] = available
+            stats["processed"] = processed
+            stats["max_records"] = max_records
+            stats["record_size"] = record_size
+            stats["invalid"] = sum(1 for r in records if not r.is_valid)
+            if available is not None:
+                stats["truncated"] = max(0, available - processed)
+            else:
+                stats["truncated"] = 0 if max_records == 0 else None
     except (IOError, OSError) as e:
         raise IOError(f"Cannot read MFT file: {e}") from e
     return records

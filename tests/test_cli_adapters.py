@@ -328,3 +328,103 @@ def test_mft_invalid_records_exit_nonzero(tmp_path, capsys):
 
     rc = cli._cmd_import_mft(_ns(mft_file=mft, allow_partial=True))
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Configured limits must be disclosed, not silently applied
+#
+# Regression: parse_prefetch_directory reported total=10 for a directory holding
+# 225 files with max_files=10, so a truncated run was indistinguishable from a
+# complete one. parse_mft_file returned 5 records for a 50-record file with no
+# indication that 45 had been dropped.
+# ---------------------------------------------------------------------------
+
+def _pf_dir(tmp_path, n=25):
+    d = tmp_path / f"pf{n}"
+    d.mkdir()
+    for i in range(n):
+        (d / f"E{i}.EXE-{i:08X}.pf").write_bytes(b"MAM\x04" + bytes([i]) * 300)
+    return d
+
+
+def test_prefetch_limit_is_disclosed(tmp_path, capsys):
+    d = _pf_dir(tmp_path, 25)
+    out = tmp_path / "o.json"
+    rc = cli._cmd_import_prefetch(
+        _ns(target=d, max_files=10, output=out, allow_partial=True)
+    )
+    payload = json.loads(out.read_text())
+    st = payload["provenance"]["run"]["stats"]
+    assert st["available"] == 25
+    assert st["processed"] == 10
+    assert st["truncated"] == 15
+    assert len(payload["records"]) == 10
+    assert rc == 0  # --allow-partial was given
+
+
+def test_prefetch_limit_makes_the_run_partial(tmp_path):
+    d = _pf_dir(tmp_path, 25)
+    rc = cli._cmd_import_prefetch(_ns(target=d, max_files=10))
+    assert rc == 1
+
+
+def test_prefetch_no_limit_reports_zero_truncation(tmp_path):
+    d = _pf_dir(tmp_path, 25)
+    out = tmp_path / "o.json"
+    cli._cmd_import_prefetch(_ns(target=d, output=out))
+    st = json.loads(out.read_text())["provenance"]["run"]["stats"]
+    assert st["available"] == 25 and st["processed"] == 25 and st["truncated"] == 0
+
+
+def _mft_with(tmp_path, n):
+    import struct
+
+    p = tmp_path / f"MFT{n}"
+    rec = bytearray(1024)
+    rec[0:4] = b"FILE"
+    struct.pack_into("<H", rec, 16, 1)
+    struct.pack_into("<H", rec, 18, 1)
+    struct.pack_into("<H", rec, 20, 56)
+    struct.pack_into("<I", rec, 24, 1024)
+    struct.pack_into("<I", rec, 28, 1024)
+    p.write_bytes(bytes(rec) * n)
+    return p
+
+
+def test_mft_limit_is_disclosed(tmp_path):
+    mft = _mft_with(tmp_path, 50)
+    out = tmp_path / "mft.json"
+    cli._cmd_import_mft(_ns(mft_file=mft, max_records=5, output=out,
+                           allow_partial=True))
+    run = json.loads(out.read_text())["provenance"]["run"]
+    assert run["available"] == 50
+    assert run["processed"] == 5
+    assert run["truncated"] == 45
+    assert run["max_records"] == 5
+
+
+def test_mft_limit_makes_the_run_partial(tmp_path):
+    mft = _mft_with(tmp_path, 50)
+    assert cli._cmd_import_mft(_ns(mft_file=mft, max_records=5)) == 1
+    assert cli._cmd_import_mft(
+        _ns(mft_file=mft, max_records=5, allow_partial=True)
+    ) == 0
+
+
+def test_mft_no_limit_reports_zero_truncation(tmp_path):
+    mft = _mft_with(tmp_path, 10)
+    out = tmp_path / "mft.json"
+    rc = cli._cmd_import_mft(_ns(mft_file=mft, output=out))
+    run = json.loads(out.read_text())["provenance"]["run"]
+    assert rc == 0
+    assert run["available"] == 10 and run["processed"] == 10
+    assert run["truncated"] == 0
+
+
+def test_parse_mft_file_stats_is_optional(tmp_path):
+    """Backwards compatibility: the stats argument is optional."""
+    from siberian.mft_parser import parse_mft_file
+
+    mft = _mft_with(tmp_path, 3)
+    assert len(parse_mft_file(mft)) == 3
+    assert len(parse_mft_file(mft, max_records=1)) == 1

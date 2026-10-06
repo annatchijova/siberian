@@ -318,14 +318,33 @@ def parse_prefetch_directory(
     Returns (records, stats). Per-file failures are kept as records with an
     explicit error, and the stats make the failure counts visible so a caller
     cannot mistake a partial parse for a complete one.
+
+    ``stats`` distinguishes:
+      available   how many .pf files the directory holds
+      processed   how many were actually parsed
+      truncated   available - processed, non-zero only when max_files bit
+
+    ``total`` is retained as an alias of ``processed`` for compatibility.
     """
     directory = Path(directory)
-    paths = sorted(directory.glob("*.pf"))
-    if max_files > 0:
-        paths = paths[:max_files]
+    available = sorted(directory.glob("*.pf"))
+
+    # Respecting a limit is not the same as silently dropping the remainder:
+    # a truncated run must be distinguishable from a complete one, so the
+    # available count is recorded alongside the processed count.
+    paths = available[:max_files] if max_files > 0 else available
+    truncated = len(available) - len(paths)
 
     records: List[PrefetchRecord] = []
-    stats = {"total": len(paths), "parsed": 0, "errors": 0, "degraded": 0}
+    stats = {
+        "available": len(available),
+        "processed": len(paths),
+        "truncated": truncated,
+        "max_files": max_files,
+        "parsed": 0,
+        "errors": 0,
+        "degraded": 0,
+    }
 
     for path in paths:
         record = parse_prefetch_file(path)
@@ -337,6 +356,8 @@ def parse_prefetch_directory(
         else:
             stats["parsed"] += 1
 
+    # Backwards-compatible alias. `available` is the honest denominator.
+    stats["total"] = stats["processed"]
     return records, stats
 
 

@@ -695,10 +695,14 @@ def _cmd_import_prefetch(args) -> int:
             record = parse_prefetch_file(args.target)
             records = [record]
             stats = {
-                "total": 1,
+                "available": 1,
+                "processed": 1,
+                "truncated": 0,
+                "max_files": args.max_files,
                 "parsed": 0 if (record.error or record.degraded) else 1,
                 "errors": 1 if record.error else 0,
                 "degraded": 1 if record.degraded else 0,
+                "total": 1,
             }
         elif args.target.is_dir():
             records, stats = parse_prefetch_directory(args.target, max_files=args.max_files)
@@ -711,8 +715,17 @@ def _cmd_import_prefetch(args) -> int:
         # A partial parse must never be reported as a clean success.
         if stats:
             print(
-                f"  parsed={stats['parsed']} errors={stats['errors']} "
-                f"degraded={stats['degraded']} total={stats['total']}"
+                f"  available={stats.get('available')} "
+                f"processed={stats.get('processed')} "
+                f"truncated={stats.get('truncated')} "
+                f"parsed={stats['parsed']} errors={stats['errors']} "
+                f"degraded={stats['degraded']}"
+            )
+        if stats.get("truncated"):
+            print(
+                f"siberian: {stats['truncated']} file(s) were NOT parsed because "
+                f"--max-files={args.max_files} was reached; this is a partial result",
+                file=sys.stderr,
             )
         for record in records:
             if record.error:
@@ -753,12 +766,25 @@ def _cmd_import_prefetch(args) -> int:
         # Nonzero when any file failed or degraded, so a caller cannot mistake
         # a partial parse for a complete one. --allow-partial downgrades this
         # to a warning for batch triage.
-        incomplete = stats.get("errors", 0) + stats.get("degraded", 0)
+        incomplete = (
+            stats.get("errors", 0)
+            + stats.get("degraded", 0)
+            + (stats.get("truncated", 0) or 0)
+        )
         if incomplete and not args.allow_partial:
+            denominator = stats.get("available") or stats.get("total") or len(records)
+            reasons = []
+            if stats.get("errors"):
+                reasons.append(f"{stats['errors']} failed")
+            if stats.get("degraded"):
+                reasons.append(f"{stats['degraded']} degraded")
+            if stats.get("truncated"):
+                reasons.append(f"{stats['truncated']} not parsed (limit)")
             print(
-                f"siberian: {incomplete} of {stats.get('total', len(records))} "
-                f"file(s) failed or degraded; re-run with --allow-partial to "
-                f"accept a partial result",
+                f"siberian: {denominator} file(s) available, "
+                f"{stats.get('processed', len(records))} processed; "
+                + ", ".join(reasons)
+                + ". Re-run with --allow-partial to accept a partial result.",
                 file=sys.stderr,
             )
             return 1
@@ -771,8 +797,25 @@ def _cmd_import_prefetch(args) -> int:
 def _cmd_import_mft(args) -> int:
     """Parse NTFS $MFT records and produce summary/JSON output."""
     try:
-        records = parse_mft_file(args.mft_file, max_records=args.max_records)
+        mft_stats: Dict[str, object] = {}
+        records = parse_mft_file(
+            args.mft_file, max_records=args.max_records, stats=mft_stats
+        )
         print(f"Parsed {len(records)} records from {args.mft_file}")
+        if mft_stats.get("available") is not None:
+            print(
+                f"  available={mft_stats['available']} "
+                f"processed={mft_stats['processed']} "
+                f"truncated={mft_stats['truncated']} "
+                f"record_size={mft_stats['record_size']}"
+            )
+        if mft_stats.get("truncated"):
+            print(
+                f"siberian: {mft_stats['truncated']} record(s) were NOT parsed "
+                f"because --max-records={args.max_records} was reached; this is "
+                f"a partial result",
+                file=sys.stderr,
+            )
 
         if args.summary:
             for record in records[:100]:
@@ -792,6 +835,10 @@ def _cmd_import_mft(args) -> int:
                         "records_parsed": len(records),
                         "records_invalid": len(invalid),
                         "record_size": records[0].allocated_size if records else None,
+                        "available": mft_stats.get("available"),
+                        "processed": mft_stats.get("processed"),
+                        "truncated": mft_stats.get("truncated"),
+                        "max_records": args.max_records,
                         "invalid_sample": [
                             {"expected_record_number": r.expected_record_number,
                              "error": r.error}
@@ -814,11 +861,12 @@ def _cmd_import_mft(args) -> int:
 
         # Invalid records are a partial result, not a clean parse. They are
         # always reported; --allow-partial only governs the exit code.
-        if invalid:
-            print(
-                f"  {len(invalid)} of {len(records)} record(s) did not parse",
-                file=sys.stderr,
-            )
+        if invalid or mft_stats.get("truncated"):
+            if invalid:
+                print(
+                    f"  {len(invalid)} of {len(records)} record(s) did not parse",
+                    file=sys.stderr,
+                )
             for record in invalid[:10]:
                 print(
                     f"siberian: record {record.expected_record_number}: {record.error}",

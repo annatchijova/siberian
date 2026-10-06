@@ -133,7 +133,7 @@ The following **cannot be completed without a Windows VM** because they require 
 - Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
 - Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
 - Red-team audits, deterministic testing, documentation
-- All 163 unit tests pass without Windows
+- All 206 unit tests pass without Windows
 
 ---
 
@@ -162,11 +162,17 @@ python3 -m siberian.verify bundle.json --strict
 siberian import-plaso template.json plaso.csv -o enriched.json
 
 # Artifact parsers (summary/JSON — these do NOT modify a case file)
-siberian import-mft $MFT --summary
-siberian import-prefetch /mnt/evidence/Prefetch --summary
-siberian import-amcache Amcache.hve --summary
-siberian import-shimcache SYSTEM --summary
-siberian import-shellbags NTUSER.DAT --bag-type BagMRU --summary
+# Every JSON export carries a provenance block: source digest, parser name and
+# version, the ordered transformations applied, and the adapter's limitations.
+siberian import-mft $MFT --summary --output mft.json
+siberian import-prefetch /mnt/evidence/Prefetch --output prefetch.json
+siberian import-amcache Amcache.hve --output amcache.json
+siberian import-shimcache SYSTEM --output shimcache.json
+siberian import-shellbags NTUSER.DAT --bag-type BagMRU --output shellbags.json
+
+# A partial result (some files failed or degraded) exits 1 and says so on
+# stderr. Accept it explicitly when triaging a batch:
+siberian import-prefetch /mnt/evidence/Prefetch --allow-partial
 
 # Evaluate rival hypotheses
 siberian rivals case.json
@@ -208,9 +214,10 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 ## Project Status
 
 - **License:** Apache-2.0
-- **Tests:** 163 passing (deterministic, no Windows required)
+- **Tests:** 206 passing (deterministic, no Windows required)
 - **Red-team audits:** Level 3 complete, Level 6 complete (all five shipped adapters), Level 5 pending
 - **Artifact parsers shipped:** Plaso l2tcsv (imports into case file), MFT, Prefetch, Amcache, Shimcache, Shellbags (summary/JSON only — see caveat)
+- **Provenance:** every adapter records the source digest (a sorted manifest digest for directories), the parser name and version, its ordered transformations, and its declared limitations
 - **Windows validation:** Pending VM access; no parser has been validated against a real artifact
 
 > Evidence is not only what remains.

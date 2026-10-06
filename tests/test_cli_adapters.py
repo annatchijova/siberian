@@ -77,6 +77,14 @@ def test_amcache_json_output_carries_errors(tmp_path):
     assert payload["entries"] == []
     assert payload["errors"], "errors must survive into the JSON output"
     assert "degraded" in payload
+    # A failed run still states which parser produced the file and what it can
+    # and cannot do.
+    prov = payload["provenance"]
+    assert prov["parser"]["name"] == "siberian.amcache_parser"
+    assert prov["parser"]["version"]
+    assert prov["parser"]["requires"] == "python-registry"
+    assert prov["limitations"]
+    assert prov["sources"][0]["path"].endswith("missing.hve")
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +122,14 @@ def test_prefetch_json_output(tmp_path):
     rc = cli._cmd_import_prefetch(_ns(target=d, output=out, allow_partial=True))
     assert rc == 0
     payload = json.loads(out.read_text())
-    assert isinstance(payload, list)
-    assert payload[0]["container"] == "MAM"
-    assert len(payload[0]["file_sha256"]) == 64
+    assert isinstance(payload, dict)
+    assert payload["records"][0]["container"] == "MAM"
+    assert len(payload["records"][0]["file_sha256"]) == 64
+    prov = payload["provenance"]
+    assert prov["parser"]["name"] == "siberian.prefetch_parser"
+    assert prov["parser"]["determinism_level"] == "best_effort"
+    assert "SCCA" in " ".join(prov["parser"]["supports"])
+    assert prov["run"]["stats"]["total"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +160,16 @@ def test_mft_json_output(tmp_path):
     rc = cli._cmd_import_mft(_ns(mft_file=mft, output=out))
     assert rc == 0
     payload = json.loads(out.read_text())
-    assert payload[0]["is_valid"] is True
+    assert payload["records"][0]["is_valid"] is True
+    prov = payload["provenance"]
+    assert prov["parser"]["name"] == "siberian.mft_parser"
+    # The source digest is the chain-of-custody anchor and must be correct.
+    import hashlib
+
+    assert prov["sources"][0]["sha256"] == hashlib.sha256(mft.read_bytes()).hexdigest()
+    assert prov["sources"][0]["size_bytes"] == mft.stat().st_size
+    assert prov["run"]["records_invalid"] == 0
+    assert any("fixup" in t for t in prov["transformations"])
 
 
 # ---------------------------------------------------------------------------
@@ -218,3 +240,91 @@ def test_shellbags_failure_is_not_counted_as_a_parsed_entry(tmp_path, capsys):
     out = capsys.readouterr().out
     assert rc == 1
     assert "Parsed 0 Shellbag entries" in out
+
+
+# ---------------------------------------------------------------------------
+# Provenance in every export
+#
+# These exist because a NameError in the Shimcache/Shellbags JSON paths shipped
+# unnoticed: the handlers wrapped everything in `except Exception`, reported
+# "error importing ...", and returned 2. No test invoked those code paths.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "command,kwargs,parser_name",
+    [
+        ("_cmd_import_shimcache", {"system_hive": "HIVE"}, "siberian.shimcache_parser"),
+        ("_cmd_import_shellbags", {"hive_path": "HIVE"}, "siberian.shellbags_parser"),
+        ("_cmd_import_amcache", {"amcache_hve": "HIVE"}, "siberian.amcache_parser"),
+    ],
+)
+def test_registry_adapters_emit_provenance(tmp_path, capsys, command, kwargs, parser_name):
+    """A failed parse must still produce a provenance record.
+
+    The record is what tells a later reader which code produced the file and
+    what it could not do -- including on a total failure.
+    """
+    hive = tmp_path / "HIVE"
+    hive.write_bytes(b"\x00" * 4096)  # not a real hive: the run fails
+    args = _ns(output=tmp_path / "out.json", allow_partial=True,
+               **{k: hive for k in kwargs})
+    rc = getattr(cli, command)(args)
+
+    payload = json.loads((tmp_path / "out.json").read_text())
+    prov = payload["provenance"]
+    assert prov["parser"]["name"] == parser_name
+    assert prov["parser"]["version"]
+    assert prov["transformations"]
+    assert prov["limitations"]
+    # The source digest is present even though parsing failed: the artifact was
+    # still read and hashed, and that is the chain-of-custody anchor.
+    src = prov["sources"][0]
+    assert src["sha256"] == __import__("hashlib").sha256(hive.read_bytes()).hexdigest()
+    assert src["size_bytes"] == 4096
+    assert rc in (0, 1)
+
+
+def test_every_adapter_json_export_has_a_provenance_block(tmp_path):
+    """Belt and braces: the top-level key exists for all five artifact adapters."""
+    import struct
+
+    mft = tmp_path / "MFT"
+    rec = bytearray(1024)
+    rec[0:4] = b"FILE"
+    struct.pack_into("<H", rec, 16, 1)
+    struct.pack_into("<H", rec, 18, 1)
+    struct.pack_into("<H", rec, 20, 56)
+    struct.pack_into("<I", rec, 24, 1024)
+    struct.pack_into("<I", rec, 28, 1024)
+    mft.write_bytes(bytes(rec))
+
+    pf = tmp_path / "pf"
+    pf.mkdir()
+    (pf / "A.EXE-00000000.pf").write_bytes(b"MAM\x04" + b"\x00" * 300)
+
+    cases = [
+        ("_cmd_import_mft", {"mft_file": mft}, "siberian.mft_parser"),
+        ("_cmd_import_prefetch", {"target": pf}, "siberian.prefetch_parser"),
+        ("_cmd_import_amcache", {"amcache_hve": tmp_path / "no.hive"}, "siberian.amcache_parser"),
+        ("_cmd_import_shimcache", {"system_hive": tmp_path / "no.hive"}, "siberian.shimcache_parser"),
+        ("_cmd_import_shellbags", {"hive_path": tmp_path / "no.hive"}, "siberian.shellbags_parser"),
+    ]
+    for handler, kwargs, parser_name in cases:
+        out = tmp_path / f"{parser_name.split('.')[-1]}.json"
+        getattr(cli, handler)(_ns(output=out, allow_partial=True, **kwargs))
+        payload = json.loads(out.read_text())
+        assert "provenance" in payload, f"{parser_name} export lacks provenance"
+        assert payload["provenance"]["parser"]["name"] == parser_name
+        assert payload["provenance"]["provenance_version"]
+
+
+def test_mft_invalid_records_exit_nonzero(tmp_path, capsys):
+    """A record that failed to parse is a partial result, not a clean run."""
+    mft = tmp_path / "MFT"
+    mft.write_bytes(b"BAD!" + b"\x00" * 2040)  # wrong signature throughout
+    rc = cli._cmd_import_mft(_ns(mft_file=mft))
+    assert rc == 1
+    assert "did not parse" in capsys.readouterr().err
+
+    rc = cli._cmd_import_mft(_ns(mft_file=mft, allow_partial=True))
+    assert rc == 0

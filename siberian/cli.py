@@ -23,6 +23,15 @@ from .prefetch_parser import parse_prefetch_file, parse_prefetch_directory, form
 from .amcache_parser import parse_amcache_hive, format_amcache_summary, AmcacheEntry
 from .shimcache_parser import parse_shimcache_from_registry, parse_shimcache_binary, format_shimcache_summary, ShimcacheEntry
 from .shellbags_parser import parse_shellbags_from_registry, format_shellbag_summary, ShellbagEntry
+from .adapter_provenance import (
+    MFT_SPEC,
+    PREFETCH_SPEC,
+    AMCACHE_SPEC,
+    SHIMCACHE_SPEC,
+    SHELLBAGS_SPEC,
+    PLASO_SPEC,
+    build_provenance,
+)
 
 _NEXT_CHECKS = {
     ObservationReason.CONDITIONS_UNVERIFIED: "document each required applicability condition across the full analysis interval",
@@ -136,6 +145,11 @@ def _build_parser() -> argparse.ArgumentParser:
     import_mft_parser.add_argument("--max-records", type=int, default=0, help="max records to parse (0=all)")
     import_mft_parser.add_argument("--output", type=Path, help="optional JSON output path")
     import_mft_parser.add_argument("--summary", action="store_true", help="print summary of parsed records")
+    import_mft_parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="exit 0 even when some records failed to parse (still reported on stderr)",
+    )
 
     # import-plaso specific options
     import_parser = commands.choices["import-plaso"]
@@ -445,8 +459,24 @@ def _cmd_import_plaso(args) -> int:
 
         if args.diagnostics:
             args.diagnostics.parent.mkdir(parents=True, exist_ok=True)
+            payload = diagnostics.to_dict()
+            # Level 6 requires the parser version and transformations to travel
+            # with the run; Plaso recorded neither.
+            payload["provenance"] = build_provenance(
+                PLASO_SPEC,
+                [args.plaso_csv, args.case_file],
+                extra={
+                    "mappings_used": diagnostics.mappings_used,
+                    "total_rows": diagnostics.total_rows,
+                    "matched_rows": diagnostics.matched_rows,
+                    "unmatched_rows": diagnostics.unmatched_rows,
+                    "rejected_rows": diagnostics.rejected_rows,
+                    "observations_created": diagnostics.observations_created,
+                    "unknown_conditions_created": diagnostics.unknown_conditions_created,
+                },
+            )
             with args.diagnostics.open("w", encoding="utf-8") as f:
-                json.dump(diagnostics.to_dict(), f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f"  Diagnostics: {args.diagnostics}")
 
         if diagnostics.errors:
@@ -489,8 +519,19 @@ def _cmd_import_shellbags(args) -> int:
 
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "provenance": build_provenance(
+                    SHELLBAGS_SPEC,
+                    [args.hive_path],
+                    extra={
+                        "bag_type": args.bag_type,
+                        "entries_parsed": len(parsed),
+                    },
+                ),
+                "entries": [e.to_dict() for e in entries],
+            }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump([e.to_dict() for e in entries], f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -532,8 +573,22 @@ def _cmd_import_shimcache(args) -> int:
 
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "provenance": build_provenance(
+                    SHIMCACHE_SPEC,
+                    [args.system_hive],
+                    extra={
+                        "entries_parsed": len(parsed),
+                        "parse_methods": sorted({e.parse_method for e in parsed}),
+                        "control_sets": sorted(
+                            {e.control_set for e in parsed if e.control_set}
+                        ),
+                    },
+                ),
+                "entries": [e.to_dict() for e in entries],
+            }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump([e.to_dict() for e in entries], f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -591,6 +646,16 @@ def _cmd_import_amcache(args) -> int:
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             payload = {
+                "provenance": build_provenance(
+                    AMCACHE_SPEC,
+                    [args.amcache_hve],
+                    extra={
+                        "entries_parsed": len(entries),
+                        "sections_found": result.sections_found,
+                        "sections_absent": result.sections_absent,
+                        "degraded": result.degraded,
+                    },
+                ),
                 "entries": [e.to_dict() for e in entries],
                 "sections_found": result.sections_found,
                 "sections_absent": result.sections_absent,
@@ -669,8 +734,14 @@ def _cmd_import_prefetch(args) -> int:
 
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "provenance": build_provenance(
+                    PREFETCH_SPEC, [args.target], extra={"stats": stats}
+                ),
+                "records": [r.to_dict() for r in records],
+            }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump([r.to_dict() for r in records], f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -709,10 +780,29 @@ def _cmd_import_mft(args) -> int:
             if len(records) > 100:
                 print(f"... and {len(records) - 100} more")
 
+        invalid = [r for r in records if not r.is_valid]
+
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "provenance": build_provenance(
+                    MFT_SPEC,
+                    [args.mft_file],
+                    extra={
+                        "records_parsed": len(records),
+                        "records_invalid": len(invalid),
+                        "record_size": records[0].allocated_size if records else None,
+                        "invalid_sample": [
+                            {"expected_record_number": r.expected_record_number,
+                             "error": r.error}
+                            for r in invalid[:10]
+                        ],
+                    },
+                ),
+                "records": [r.to_dict() for r in records],
+            }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump([r.to_dict() for r in records], f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -722,6 +812,28 @@ def _cmd_import_mft(args) -> int:
             if len(records) > 50:
                 print(f"... and {len(records) - 50} more")
 
+        # Invalid records are a partial result, not a clean parse. They are
+        # always reported; --allow-partial only governs the exit code.
+        if invalid:
+            print(
+                f"  {len(invalid)} of {len(records)} record(s) did not parse",
+                file=sys.stderr,
+            )
+            for record in invalid[:10]:
+                print(
+                    f"siberian: record {record.expected_record_number}: {record.error}",
+                    file=sys.stderr,
+                )
+            if not args.allow_partial:
+                print(
+                    "siberian: re-run with --allow-partial to accept a partial result",
+                    file=sys.stderr,
+                )
+                return 1
+            print(
+                "siberian: accepting partial result because --allow-partial was given",
+                file=sys.stderr,
+            )
         return 0
     except Exception as e:
         print(f"siberian: error importing MFT: {e}", file=sys.stderr)

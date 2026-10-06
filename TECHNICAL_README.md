@@ -77,7 +77,9 @@ The standalone port addresses representation and provenance issues from the sour
 - The probability-sounding `fabrication_likelihood` field is omitted.
 - Each confirmed absence is gated on catalog applicability evidence.
 
-Important limits remain: the catalog is not yet a version/configuration matrix and does not validate a declared Windows release/build; references are locators and validity declarations supplied by the caller; collection quality and artifact dependencies are not modeled; there is no calibrated inference or rival-hypothesis comparison, and the CLI has no raw-evidence parser. The SHA-256 digest covers the declared context, catalog version and entries, and observation/status/reference records, including validity intervals for condition evidence. It does not attest to truth or completeness and is not a sealed chain-of-custody report. The temporal-drift module is a separate VIGÍA subsystem and is not part of this port.
+Important limits remain: the catalog is not yet a version/configuration matrix and does not validate a declared Windows release/build; references are locators and validity declarations supplied by the caller; collection quality and artifact dependencies are not modeled; and there is no calibrated inference. Rival-hypothesis comparison is implemented (`rivals`, Level 3) but is not calibration. The CLI now includes raw-evidence parsers (see below), and every adapter export is sealed and independently verifiable.
+
+The artifact parsers are new and their limits are severe enough to state plainly. Five adapters ship — MFT, Prefetch, Amcache, Shimcache, Shellbags — and **not one has been validated against a real artifact**. Each was found to emit wrong values while passing its own tests: the MFT parser reported a file's creation time as its modification time; Prefetch decoded filename characters as a FILETIME; Amcache rendered `bytes(range(64))` as the date 3204-10-05 and exited 0 for a hive that did not exist; Shimcache consumed an unrelated registry value and blamed the artifact format; Shellbags returned `C:\Users\Bob\Deskto` for `Desktop` and recovered 0 of 200 folders from a realistically shaped hive. Only Prefetch has been validated, against 225 real Windows 10 artifacts from the OWL 2019 image. See `docs/red-team/` — including what verification does *not* establish, in `docs/EXPORT_VERIFICATION.md`. The SHA-256 digest covers the declared context, catalog version and entries, and observation/status/reference records, including validity intervals for condition evidence. It does not attest to truth or completeness and is not a sealed chain-of-custody report. The temporal-drift module is a separate VIGÍA subsystem and is not part of this port.
 
 ## Determinism, provenance, and integrity
 
@@ -89,9 +91,34 @@ API arguments are checked for supported action/artifact identifiers, valid state
 
 The analyst, acquisition process, clocks, expectation model, operating-system documentation, and chain-of-custody records are separate trust dependencies. SIBERIAN cannot infer completeness where those sources do not establish it.
 
+## Artifact adapters, sealing and independent verification
+
+`import-*` and `batch` read raw forensic artifacts and emit sealed JSON exports.
+Each export carries an integrity block (`provenance_hash`, `payload_hash`,
+`export_hash`) bound to its provenance, its records, and the parser's identity and
+declared limitations.
+
+`forensics/verify_siberian.py` re-derives those digests from the documented
+protocol alone. It is a single stdlib-only file that imports nothing from
+SIBERIAN, so an analyst can verify evidence without trusting — or even installing
+— the tool that produced it. Tampering with a record, with the provenance, with
+the parser's name, or with the declared limitations is detected; reordering JSON
+keys is not, and should not be, because key order is not a property of the
+evidence.
+
+Sealing proves the document is unmodified. It does not prove the parser was
+correct, and it does not prove the recorded source digest belongs to the
+analyst's original evidence.
+
+`batch` refuses to mix sources or cases: one output per input, and an existing
+output whose source digest differs causes the run to fail rather than overwrite.
+
 ## Planned validation
 
-Unit tests exercise the contextual core and CLI parser/report behavior with synthetic records. They do not validate the Windows artifact catalog empirically or establish practitioner demand. Before describing the analysis as useful for forensic conclusions, validation should include at minimum:
+Unit tests (342) exercise the contextual core, the CLI, the artifact adapters and
+the verifier. They do not validate the Windows artifact catalog empirically, do
+not establish practitioner demand, and — except for Prefetch against 225 real
+artifacts — do not validate any parser against a real forensic artifact. They do not validate the Windows artifact catalog empirically or establish practitioner demand. Before describing the analysis as useful for forensic conclusions, validation should include at minimum:
 
 - valid and incomplete applicability evidence for confirmed absences;
 - mixtures of present, confirmed absent, unknown, and out-of-scope records;

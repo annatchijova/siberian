@@ -154,7 +154,7 @@ second table. No Windows licence, VM or dual boot is needed — only the file.
 - Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
 - Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
 - Red-team audits, deterministic testing, documentation
-- All 316 unit tests pass on Linux, with no Windows and no evidence
+- All 342 unit tests pass on Linux, with no Windows and no evidence
 
 ---
 
@@ -247,7 +247,7 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 ## Project Status
 
 - **License:** Apache-2.0
-- **Tests:** 316 passing on Linux (deterministic, no Windows required)
+- **Tests:** 342 passing on Linux (deterministic, no Windows required)
 - **Red-team audits:** Level 3 complete, Level 6 complete (all five shipped adapters), Level 5 pending
 - **Artifact parsers shipped:** Plaso l2tcsv (imports into case file), MFT, Prefetch, Amcache, Shimcache, Shellbags (summary/JSON only — see caveat)
 - **Provenance:** every adapter records the source digest (a sorted manifest digest for directories), the parser name and version, its ordered transformations, and its declared limitations

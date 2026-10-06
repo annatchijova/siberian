@@ -90,9 +90,53 @@ El detector de VIGÍA es un punto de partida de investigación, no un producto i
 - `docs/`: procedencia, comportamiento técnico y decisión de lenguaje.
 - [Niveles de construcción](docs/NIVELES.md): camino hacia informes forenses calibrados y verificables por terceros, en etapas útiles e íntegras.
 - [Protocolo de validación del Nivel 1](docs/LEVEL1_VALIDATION_PROTOCOL.md): campos para la matriz de aplicabilidad, revisión de fuentes oficiales y diseño de validación controlada. Documenta un plan, no resultados.
-- [Pendientes](PENDIENTES.md): trabajo posible sin Windows y experimentos que requieren una VM Windows.
-- Próximo: terminar y pulir el flujo acotado de la CLI con casos sintéticos; la compatibilidad y el comportamiento real de Windows quedan como validación empírica separada.
+- [Verificación de exports](docs/EXPORT_VERIFICATION.md): cómo verificar un export **sin SIBERIAN**, y qué la verificación no demuestra.
+- [Auditorías adversariales](docs/red-team/): los cinco parsers y la infraestructura, con los defectos encontrados y los refutados.
+- [Pendientes](PENDIENTES.md): qué falta y qué se necesita.
 
-La CLI local y el lector estricto de casos son un prototipo inicial. Todavía no hay modelo calibrado, corpus de validación operativa ni validación empírica en Windows. No hay métricas de sospecha ponderadas. Licencia Apache-2.0.
+## Comandos actuales
+
+```bash
+siberian validate|analyze|explain CASO      # núcleo contextual
+siberian rivals CASO                        # hipótesis rivales y contrafácticos
+siberian seal CASO -o BUNDLE                # bundle sellado
+python3 -m siberian.verify BUNDLE --strict  # verificador standalone, solo stdlib
+
+siberian import-plaso  CASO PLASO.CSV -o SALIDA      # importa a un case file
+siberian import-mft     $MFT --output mft.json        # parsers de artefacto
+siberian import-prefetch  DIR_PREFETCH --output pf.json
+siberian import-amcache   Amcache.hve --output am.json
+siberian import-shimcache SYSTEM --output sh.json
+siberian import-shellbags NTUSER.DAT --output sb.json
+
+siberian batch --adapter prefetch --out-dir out/ PATRON RUTA   # un output por artefacto
+
+python3 forensics/verify_siberian.py out/*.json --rehash-source
+```
+
+### Dos cosas que conviene saber antes de usar los parsers
+
+**1. Corre en Linux, pero casi nada está validado contra evidencia real.** El núcleo
+y los cinco parsers son solo stdlib y no dependen de Windows: un `$MFT` o un
+`SYSTEM` son bytes y se parsean en Linux sin problema. Lo que falta no es el
+sistema operativo sino **muestras reales**. De los cinco adaptadores, solo Prefetch
+fue validado, contra 225 artefactos Windows 10 reales de la imagen OWL 2019. Ver
+[qué falta exactamente](PENDIENTES.md).
+
+**2. Los cinco parsers emitían valores equivocados mientras sus tests pasaban.**
+Por ejemplo, MFT reportaba la fecha de creación de un archivo como su fecha de
+modificación, y Shellbags devolvía `C:\Users\Bob\Deskto` en lugar de `Desktop`.
+Una ruta plausible no es una ruta correcta. Todos los detalles, incluidos los hallazgos
+que se refutaron durante la propia auditoría, están en
+[`docs/red-team/`](docs/red-team/).
+
+Cada export lleva un bloque de integridad (`provenance_hash`, `payload_hash`,
+`export_hash`) que ata el contenido a la provenance, a la identidad del parser y a
+sus limitaciones declaradas. `forensics/verify_siberian.py` re-deriva esos digests
+sin importar SIBERIAN: un solo archivo que se copia a la máquina con la evidencia.
+Eso prueba que el documento no fue alterado; **no** prueba que el parser fuera
+correcto.
+
+La CLI local y el lector estricto de casos son un prototipo inicial. Todavía no hay modelo calibrado ni corpus de validación operativa. No hay métricas de sospecha ponderadas. Licencia Apache-2.0.
 
 > La evidencia no es solamente lo que permanece.

@@ -41,6 +41,8 @@ No calibrar scores ni inferir borrado selectivo sin corridas controladas y evalu
 - [x] Nivel 2: lectura de casos y `validate` / `analyze` / `explain` desde la CLI.
 - [x] Nivel 3: hipótesis rivales, dependencias de artefactos y contrafácticos explícitos (`rivals`). Auditoría en [`docs/red-team/NIVEL3_AUDIT.md`](docs/red-team/NIVEL3_AUDIT.md).
 - [ ] Nivel 4: evaluación empírica ciega y calibración, solo si los datos discriminan las hipótesis. **Bloqueado**: requiere Windows.
+- [x] Corregir el catálogo: `ntfs_mft_entry` se había añadido sin subir `CATALOG_VERSION`, en contradicción con `docs/CATALOG_REVIEW.md` (que lo difería) y sin fila en `docs/CATALOG_MATRIX.md`. Sus dos fuentes **daban 404**: un GUID de Open Specifications inventado y una ruta de libyal inexistente. Catálogo subido a v4 con tres fuentes de Microsoft verificadas. `tests/test_catalog_version_binding.py` liga el contenido del catálogo a su versión declarada.
+- [x] Arnés de validación [`lab/validate_artifacts.py`](lab/validate_artifacts.py): convierte los artefactos adquiridos en evidencia con un comando, y re-verifica cada export con el verificador independiente con SIBERIAN ausente.
 - [x] Nivel 5: bundle sellado y verificador independiente (`seal` / `verify`, stdlib-only).
 - [x] Nivel 6 — Plaso: importador a case file. Decisión documentada en [`docs/PLASO_IMPORT.md`](docs/PLASO_IMPORT.md): solo presencias con mapeo explícito; una fila ausente no prueba ausencia.
 - [x] Nivel 6 — provenance: todo adaptador registra digest de origen, nombre y versión del parser, transformaciones ordenadas y limitaciones declaradas.

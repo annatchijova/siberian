@@ -8,7 +8,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-CATALOG_VERSION = "windows-msdocs-2026-10-04-v3"
+# Bumped to v4 when ntfs_mft_entry was added. The analysis digest covers this
+# string, so a catalog whose entries change MUST bump it: otherwise two different
+# catalogs seal under the same declared version and a verifier cannot tell them
+# apart. tests/test_catalog_version_binding.py pins this.
+CATALOG_VERSION = "windows-msdocs-2026-10-05-v4"
 
 
 @dataclass(frozen=True)
@@ -160,8 +164,17 @@ WINDOWS_CATALOG: tuple[ExpectedArtifact, ...] = (
         retention="MFT records for deleted files may be reused after deletion; timestamps reflect the last recorded metadata update and may persist after file removal.",
         interpretation_limit="An MFT record shows metadata for the last state before deletion or overwrite; it does not capture the full event history of the file.",
         source_refs=(
-            ("NTFS and ReFS boot sector", "https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fat/0b1bc2b3-5f1e-4e5b-9b0e-8a4d3e2f1c0b"),
-            ("MFT record format", "https://github.com/libyal/libfsntfs/blob/main/documentation/MFT.md"),
+            # Both URLs verified reachable. The previously cited "ms-fat" GUID
+            # and the libyal libfsntfs MFT.md path both returned HTTP 404: one
+            # was a fabricated Open Specifications GUID and the other does not
+            # exist. A catalog that cites unreachable sources cannot be
+            # reviewed, which defeats the purpose of citing them.
+            ("FILE_RECORD_SEGMENT_HEADER (on-disk MFT record header, update sequence array, flags)",
+             "https://learn.microsoft.com/en-us/windows/win32/devnotes/file-record-segment-header"),
+            ("Master file table (MFT) overview",
+             "https://learn.microsoft.com/en-us/windows/win32/devnotes/master-file-table"),
+            ("MS-FSCC 5.2 NTFS attribute types ($STANDARD_INFORMATION, $FILE_NAME, $DATA)",
+             "https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/a82e9105-2405-4e37-b2c3-28c773902d85"),
         ),
     ),
 )

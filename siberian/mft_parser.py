@@ -425,6 +425,12 @@ def parse_mft_record(data: bytes, record_number: int, record_size: int = 1024) -
     # caller's index. Comparing the two is itself provenance worth keeping.
     embedded_record_number = struct.unpack_from("<I", fixed, 44)[0]
 
+    # MS names 0x0001 FILE_RECORD_SEGMENT_IN_USE and 0x0002
+    # FILE_FILE_NAME_INDEX_PRESENT. Treating the latter as "is a directory" is
+    # the conventional reading used across NTFS tooling, and it is what an
+    # analyst expects, but it is an interpretation of the flag's name rather
+    # than its literal meaning. The bit is preserved here; the distinction is
+    # recorded so a future reader does not mistake one for the other.
     is_in_use = bool(flags & 0x01)
     is_directory = bool(flags & 0x02)
 

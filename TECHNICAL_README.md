@@ -115,7 +115,7 @@ output whose source digest differs causes the run to fail rather than overwrite.
 
 ## Planned validation
 
-Unit tests (342) exercise the contextual core, the CLI, the artifact adapters and
+Unit tests (370) exercise the contextual core, the CLI, the artifact adapters and
 the verifier. They do not validate the Windows artifact catalog empirically, do
 not establish practitioner demand, and — except for Prefetch against 225 real
 artifacts — do not validate any parser against a real forensic artifact. They do not validate the Windows artifact catalog empirically or establish practitioner demand. Before describing the analysis as useful for forensic conclusions, validation should include at minimum:

@@ -154,7 +154,7 @@ second table. No Windows licence, VM or dual boot is needed — only the file.
 - Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
 - Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
 - Red-team audits, deterministic testing, documentation
-- All 342 unit tests pass on Linux, with no Windows and no evidence
+- All 370 unit tests pass on Linux, with no Windows and no evidence
 
 ---
 
@@ -182,6 +182,9 @@ python3 -m siberian.verify bundle.json --strict
 # Verify an adapter export WITHOUT SIBERIAN INSTALLED
 # (copy this one file; it imports nothing from the package)
 python3 forensics/verify_siberian.py out/0000_*.json --rehash-source
+
+# When Windows artifacts arrive: one command turns them into a validation report
+python3 lab/validate_artifacts.py --artifacts /mnt/acquired --out report/
 
 # Import Plaso l2tcsv as UNKNOWN observations
 siberian import-plaso template.json plaso.csv -o enriched.json
@@ -247,9 +250,10 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 ## Project Status
 
 - **License:** Apache-2.0
-- **Tests:** 342 passing on Linux (deterministic, no Windows required)
+- **Tests:** 370 passing on Linux (deterministic, no Windows required)
 - **Red-team audits:** Level 3 complete, Level 6 complete (all five shipped adapters), Level 5 pending
 - **Artifact parsers shipped:** Plaso l2tcsv (imports into case file), MFT, Prefetch, Amcache, Shimcache, Shellbags (summary/JSON only — see caveat)
+- **VM handoff:** `lab/validate_artifacts.py` turns acquired artifacts into a validation report with one command, re-verifying every export with SIBERIAN absent. It states at the top that a verified export is not a correct export
 - **Provenance:** every adapter records the source digest (a sorted manifest digest for directories), the parser name and version, its ordered transformations, and its declared limitations
 - **Batch (`siberian batch`):** runs one adapter over many artifacts, one output file per artifact plus a manifest. It refuses to start rather than mix sources or overwrite another case's export, isolates each input's failure, and discloses any limit that truncated the run
 - **Independent verification:** every export is sealed (`provenance_hash`, `payload_hash`, `export_hash`). `forensics/verify_siberian.py` re-derives them from the documented protocol alone — one stdlib-only file that imports nothing from SIBERIAN, so an analyst can verify evidence without trusting the tool that produced it. See [docs/EXPORT_VERIFICATION.md](docs/EXPORT_VERIFICATION.md)

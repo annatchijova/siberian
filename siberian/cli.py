@@ -35,7 +35,12 @@ _NEXT_CHECKS = {
 }
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
+    """Construct the full argument parser.
+
+    Extracted from main() so the argument contract can be asserted directly by
+    tests rather than only by invoking commands.
+    """
     parser = argparse.ArgumentParser(
         prog="siberian",
         description="Review declared forensic evidence gaps; does not infer deletion or intent.",
@@ -83,6 +88,11 @@ def main(argv: list[str] | None = None) -> int:
     import_shellbags_parser.add_argument("--max-entries", type=int, default=0, help="max entries to show (0=all)")
     import_shellbags_parser.add_argument("--output", type=Path, help="optional JSON output path")
     import_shellbags_parser.add_argument("--summary", action="store_true", help="print summary of parsed entries")
+    import_shellbags_parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="exit 0 even when the hive could not be fully read (still reported on stderr)",
+    )
 
     # import-shimcache specific options
     import_shimcache_parser = commands.choices["import-shimcache"]
@@ -90,6 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     import_shimcache_parser.add_argument("--max-entries", type=int, default=0, help="max entries to show (0=all)")
     import_shimcache_parser.add_argument("--output", type=Path, help="optional JSON output path")
     import_shimcache_parser.add_argument("--summary", action="store_true", help="print summary of parsed entries")
+    import_shimcache_parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="exit 0 even when the hive could not be fully read (still reported on stderr)",
+    )
 
     # import-amcache specific options
     import_amcache_parser = commands.choices["import-amcache"]
@@ -97,6 +112,11 @@ def main(argv: list[str] | None = None) -> int:
     import_amcache_parser.add_argument("--max-entries", type=int, default=0, help="max entries to show (0=all)")
     import_amcache_parser.add_argument("--output", type=Path, help="optional JSON output path")
     import_amcache_parser.add_argument("--summary", action="store_true", help="print summary of parsed entries")
+    import_amcache_parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="exit 0 even when the hive could not be fully read (still reported on stderr)",
+    )
 
     # import-prefetch specific options
     import_prefetch_parser = commands.choices["import-prefetch"]
@@ -148,6 +168,11 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="JSON output"
     )
 
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.command == "verify":
@@ -473,6 +498,18 @@ def _cmd_import_shellbags(args) -> int:
             if len(entries) > 50:
                 print(f"... and {len(entries) - 50} more")
 
+        # Same contract as the other adapters: a failed or degraded parse is
+        # not a success.
+        failures = [e for e in entries if e.error]
+        if failures:
+            for entry in failures:
+                print(f"siberian: {entry.error}", file=sys.stderr)
+            if not args.allow_partial:
+                return 1
+            print(
+                "siberian: accepting partial result because --allow-partial was given",
+                file=sys.stderr,
+            )
         return 0
     except Exception as e:
         print(f"siberian: error importing Shellbags: {e}", file=sys.stderr)
@@ -503,6 +540,21 @@ def _cmd_import_shimcache(args) -> int:
             if len(entries) > 50:
                 print(f"... and {len(entries) - 50} more")
 
+        # A failed or degraded parse must not exit 0. A previous revision
+        # printed "Parsed 1 entries" and returned 0 for a missing hive.
+        failures = [e for e in entries if e.error or e.degraded]
+        if failures:
+            for entry in failures:
+                print(
+                    f"siberian: {entry.error or entry.degraded}",
+                    file=sys.stderr,
+                )
+            if not args.allow_partial:
+                return 1
+            print(
+                "siberian: accepting partial result because --allow-partial was given",
+                file=sys.stderr,
+            )
         return 0
     except Exception as e:
         print(f"siberian: error importing Shimcache: {e}", file=sys.stderr)
@@ -512,8 +564,21 @@ def _cmd_import_shimcache(args) -> int:
 def _cmd_import_amcache(args) -> int:
     """Parse Windows Amcache.hve and produce summary/JSON output."""
     try:
-        entries = parse_amcache_hive(args.amcache_hve)
+        result = parse_amcache_hive(args.amcache_hve)
+        entries = result.entries
+
+        for message in result.errors:
+            print(f"siberian: {message}", file=sys.stderr)
+        if result.degraded:
+            print(f"siberian: {result.degraded}", file=sys.stderr)
+
         print(f"Parsed {len(entries)} Amcache entries from {args.amcache_hve}")
+        if result.sections_found:
+            print(f"  sections found : {', '.join(result.sections_found)}")
+        if result.sections_absent:
+            print(f"  sections absent: {', '.join(result.sections_absent)}")
+        if result.errors or result.degraded:
+            print(f"  errors={len(result.errors)} degraded={1 if result.degraded else 0}")
 
         if args.summary:
             for entry in entries[:args.max_entries or 100]:
@@ -523,8 +588,15 @@ def _cmd_import_amcache(args) -> int:
 
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "entries": [e.to_dict() for e in entries],
+                "sections_found": result.sections_found,
+                "sections_absent": result.sections_absent,
+                "errors": result.errors,
+                "degraded": result.degraded,
+            }
             with args.output.open("w", encoding="utf-8") as f:
-                json.dump([e.to_dict() for e in entries], f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f"JSON output written to {args.output}")
 
         if not args.summary and not args.output:
@@ -533,6 +605,15 @@ def _cmd_import_amcache(args) -> int:
             if len(entries) > 50:
                 print(f"... and {len(entries) - 50} more")
 
+        # A hive that could not be read must not exit 0. The previous revision
+        # printed "Parsed 1 entries" and returned 0 for a missing file.
+        if result.errors or result.degraded:
+            if not args.allow_partial:
+                return 1
+            print(
+                "siberian: accepting partial result because --allow-partial was given",
+                file=sys.stderr,
+            )
         return 0
     except Exception as e:
         print(f"siberian: error importing Amcache: {e}", file=sys.stderr)

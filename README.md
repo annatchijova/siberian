@@ -133,7 +133,7 @@ The following **cannot be completed without a Windows VM** because they require 
 - Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
 - Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
 - Red-team audits, deterministic testing, documentation
-- All 206 unit tests pass without Windows
+- All 252 unit tests pass without Windows
 
 ---
 
@@ -173,6 +173,12 @@ siberian import-shellbags NTUSER.DAT --bag-type BagMRU --output shellbags.json
 # A partial result (some files failed or degraded) exits 1 and says so on
 # stderr. Accept it explicitly when triaging a batch:
 siberian import-prefetch /mnt/evidence/Prefetch --allow-partial
+
+# Batch: one adapter over many artifacts, ONE OUTPUT PER INPUT
+siberian batch --adapter prefetch --out-dir out/ \
+    --pattern '*.pf' --max-inputs 200 --max-items-per-input 50 \
+    /mnt/evidence/Prefetch
+#   -> out/0000_<artifact>.json, 0001_<artifact>.json, ... plus out/batch-manifest.json
 
 # Evaluate rival hypotheses
 siberian rivals case.json
@@ -214,10 +220,11 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 ## Project Status
 
 - **License:** Apache-2.0
-- **Tests:** 206 passing (deterministic, no Windows required)
+- **Tests:** 252 passing (deterministic, no Windows required)
 - **Red-team audits:** Level 3 complete, Level 6 complete (all five shipped adapters), Level 5 pending
 - **Artifact parsers shipped:** Plaso l2tcsv (imports into case file), MFT, Prefetch, Amcache, Shimcache, Shellbags (summary/JSON only — see caveat)
 - **Provenance:** every adapter records the source digest (a sorted manifest digest for directories), the parser name and version, its ordered transformations, and its declared limitations
+- **Batch (`siberian batch`):** runs one adapter over many artifacts, one output file per artifact plus a manifest. It refuses to start rather than mix sources or overwrite another case's export, isolates each input's failure, and discloses any limit that truncated the run
 - **Windows validation:** Pending VM access; no parser has been validated against a real artifact
 
 > Evidence is not only what remains.

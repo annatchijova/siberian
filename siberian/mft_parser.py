@@ -519,6 +519,12 @@ def parse_mft_file(
         with open(mft_path, "rb") as f:
             probe = f.read(4096)
             if not probe:
+                if stats is not None:
+                    stats.update({
+                        "available": 0, "processed": 0, "truncated": 0,
+                        "max_records": max_records, "record_size": None,
+                        "invalid": 0, "empty_file": True,
+                    })
                 return []
             record_size = detect_mft_record_size(probe)
             f.seek(0)
@@ -565,6 +571,7 @@ def parse_mft_file(
             stats["max_records"] = max_records
             stats["record_size"] = record_size
             stats["invalid"] = sum(1 for r in records if not r.is_valid)
+            stats["empty_file"] = False
             if available is not None:
                 stats["truncated"] = max(0, available - processed)
             else:

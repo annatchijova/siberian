@@ -84,11 +84,38 @@ def _build_parser() -> argparse.ArgumentParser:
         ("import-amcache", "parse Windows Amcache.hve and produce summary output"),
         ("import-shimcache", "parse AppCompatCache (Shimcache) from SYSTEM hive"),
         ("import-shellbags", "parse Shellbags from NTUSER.DAT/USRCLASS.DAT hive"),
+        ("batch", "run one adapter over many inputs, one output per input"),
         ("rivals", "evaluate rival hypotheses against analysis result"),
     ):
         subparser = commands.add_parser(command, help=help_text)
         if command in case_file_commands:
             subparser.add_argument("case_file", type=Path, help="analyst-authored JSON case file")
+
+    # batch-specific options (no case_file: it operates on artifacts)
+    batch_parser = commands.choices["batch"]
+    batch_parser.add_argument("--adapter", required=True,
+                              choices=["mft", "prefetch", "amcache", "shimcache", "shellbags"],
+                              help="adapter to run over each input")
+    batch_parser.add_argument("inputs", nargs="+", type=Path,
+                              help="source files or directories")
+    batch_parser.add_argument("--out-dir", type=Path, required=True,
+                              help="directory for per-input outputs (one file per input)")
+    batch_parser.add_argument("--pattern", default="*",
+                              help="glob applied when an input is a directory")
+    batch_parser.add_argument("--recursive", action="store_true",
+                              help="recurse into subdirectories")
+    batch_parser.add_argument("--max-inputs", type=int, default=0,
+                              help="maximum inputs to process (0 = no limit)")
+    batch_parser.add_argument("--max-items-per-input", type=int, default=0,
+                              help="per-input limit forwarded to the adapter (0 = no limit)")
+    batch_parser.add_argument("--min-inputs", type=int, default=1,
+                              help="refuse to run if fewer inputs are found")
+    batch_parser.add_argument("--allow-partial", action="store_true",
+                              help="exit 0 even when some inputs were partial or failed")
+    batch_parser.add_argument("--json", action="store_true",
+                              help="print the batch manifest as JSON")
+    batch_parser.add_argument("--max-report", type=int, default=20,
+                              help="max inputs listed in the terminal report (0 = all)")
 
     # import-shellbags specific options
     import_shellbags_parser = commands.choices["import-shellbags"]
@@ -209,6 +236,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "import-shellbags":
         return _cmd_import_shellbags(args)
+
+    if args.command == "batch":
+        return _cmd_batch(args)
 
     if args.command == "rivals":
         return _cmd_rivals(args)
@@ -558,6 +588,59 @@ def _cmd_import_shellbags(args) -> int:
         return 2
 
 
+def _cmd_batch(args) -> int:
+    """Run one adapter over many inputs, one output per input.
+
+    Each input gets its own output file and its own provenance. The batch refuses
+    to start if that would mix sources or overwrite another case's export.
+    """
+    from .batch import BatchError, BatchLimits, format_batch_report, run_batch
+
+    limits = BatchLimits(
+        max_inputs=args.max_inputs,
+        max_items_per_input=args.max_items_per_input,
+        min_inputs=args.min_inputs,
+    )
+
+    try:
+        result = run_batch(
+            args.adapter,
+            args.inputs,
+            args.out_dir,
+            limits=limits,
+            pattern=args.pattern,
+            recursive=args.recursive,
+            allow_partial=args.allow_partial,
+        )
+    except BatchError as exc:
+        print(f"siberian: batch not started: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(format_batch_report(result, max_report=args.max_report))
+
+    # Any non-ok input makes the batch partial. Skipped inputs count too,
+    # because work was deliberately left undone.
+    incomplete = result.partial + result.failed
+    if incomplete or result.inputs_skipped_by_limit:
+        if not args.allow_partial:
+            print(
+                "siberian: batch is partial "
+                f"({incomplete} input(s) partial or failed, "
+                f"{result.inputs_skipped_by_limit} not processed). "
+                f"Re-run with --allow-partial to accept it.",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            "siberian: accepting partial batch because --allow-partial was given",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def _cmd_import_shimcache(args) -> int:
     """Parse AppCompatCache (Shimcache) from SYSTEM hive."""
     try:
@@ -825,6 +908,16 @@ def _cmd_import_mft(args) -> int:
 
         invalid = [r for r in records if not r.is_valid]
 
+        if not records:
+            # An empty or non-$MFT file yields zero records. That is not a
+            # successful parse and must not exit 0 as one.
+            reason = (
+                "file is empty: no MFT records present"
+                if mft_stats.get("empty_file")
+                else "no MFT records decoded from this file"
+            )
+            print(f"siberian: {reason}", file=sys.stderr)
+
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             payload = {
@@ -861,8 +954,10 @@ def _cmd_import_mft(args) -> int:
 
         # Invalid records are a partial result, not a clean parse. They are
         # always reported; --allow-partial only governs the exit code.
-        if invalid or mft_stats.get("truncated"):
-            if invalid:
+        if invalid or mft_stats.get("truncated") or not records:
+            if not records:
+                pass  # already reported above
+            elif invalid:
                 print(
                     f"  {len(invalid)} of {len(records)} record(s) did not parse",
                     file=sys.stderr,

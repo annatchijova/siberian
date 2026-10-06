@@ -611,7 +611,6 @@ def _cmd_batch(args) -> int:
             limits=limits,
             pattern=args.pattern,
             recursive=args.recursive,
-            allow_partial=args.allow_partial,
         )
     except BatchError as exc:
         print(f"siberian: batch not started: {exc}", file=sys.stderr)

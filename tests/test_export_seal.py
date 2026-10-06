@@ -14,6 +14,7 @@ import json
 import shutil
 import subprocess
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -371,4 +372,195 @@ def test_verifier_agrees_with_producer_on_a_real_export(tmp_path):
         failed = [c["code"] for c in doc["checks"] if not c["passed"]]
         assert not any(code.startswith(("V2", "V3", "V4", "V5")) for code in failed), (
             f"{doc['path']} failed an integrity check: {failed}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Producer / verifier canonicalization agreement
+#
+# The independence guarantee rests on the verifier implementing the documented
+# protocol exactly. Red-team found it did not: Fraction was missing, so the
+# verifier implemented a strict SUBSET of canonicalization v2 and would have
+# disagreed with the producer on that type while both claimed conformance.
+#
+# These tests pin the two implementations together. They are the guard against
+# that class of drift, and they compare behaviour rather than reading source.
+# ---------------------------------------------------------------------------
+
+def _load_verifier_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "siberian_verify_under_test", VERIFIER
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# Values chosen to hit every rule in the protocol, including the collisions the
+# type tags exist to prevent.
+_AGREEMENT_CASES = {
+    "bool true": True,
+    "bool false": False,
+    "int": 1,
+    "negative int": -7,
+    "big int": 2**63,
+    "string true": "true",
+    "string int-tagged": "1:int",
+    "string null": "null",
+    "string frac-tagged": "1/2:frac",
+    "none": None,
+    "float": 1.5,
+    "float negative zero": -0.0,
+    "float nan": float("nan"),
+    "float inf": float("inf"),
+    "fraction": Fraction(1, 2),
+    "fraction negative": Fraction(-3, 4),
+    "nfd unicode": "café",
+    "crlf": "a\r\nb",
+    "lone cr": "a\rb",
+    "empty string": "",
+    "nested dict": {"b": [1, "x"], "a": None},
+    "deep list": [[1], [2, {"k": "v"}]],
+    "path with backslashes": "C:\\Windows\\System32\\cmd.exe",
+    "iso timestamp": "2024-03-02T12:00:00+00:00",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_AGREEMENT_CASES))
+def test_verifier_and_producer_agree_on_canonicalization(name):
+    from siberian.canonicalize import canonical_hash as producer_hash
+
+    verifier = _load_verifier_module()
+    payload = {"v": _AGREEMENT_CASES[name]}
+    assert verifier.canonical_hash(payload) == producer_hash(payload), (
+        f"canonicalization diverges on {name!r}: the verifier must implement "
+        f"the documented protocol, not a subset of it"
+    )
+
+
+def test_verifier_supports_every_type_the_producer_supports():
+    """No type the producer can hash may be unhashable by the verifier."""
+    from siberian.canonicalize import canonical_hash as producer_hash
+
+    verifier = _load_verifier_module()
+    for name, value in _AGREEMENT_CASES.items():
+        try:
+            producer_hash({"v": value})
+        except TypeError:
+            continue  # the producer rejects it too; nothing to agree on
+        verifier.canonical_hash({"v": value})  # must not raise
+
+
+def test_verifier_rejects_unsupported_types_like_the_producer():
+    """Both must refuse what the protocol does not define.
+
+    Note a lone int key is NOT in this set: it is unusual but both
+    implementations accept it identically, so it is not a divergence.
+    """
+    from siberian.canonicalize import canonical_hash as producer_hash
+
+    verifier = _load_verifier_module()
+    unsupported = [
+        {(1, 2): "tuple key"},          # tuple is not a valid JSON key
+        {"s": object()},                # arbitrary object
+        {1: "a", "1": "b"},             # mixed key types cannot be sorted
+    ]
+    for value in unsupported:
+        # Both reject, though not always with the same class: a bad dict key is
+        # caught by json.dumps (plain TypeError) rather than by the type walk
+        # (CanonicalizeError, a TypeError subclass). What matters is that the
+        # two agree on rejecting it, not which layer objects.
+        with pytest.raises(TypeError):
+            producer_hash({"v": value})
+        with pytest.raises(TypeError):
+            verifier.canonical_hash({"v": value})
+
+
+def test_verifier_rejects_fraction_gap_regression():
+    """Pinned directly: this exact gap was found by red-team."""
+    verifier = _load_verifier_module()
+    assert verifier.canonicalize(Fraction(1, 2)) == "1/2:frac"
+
+
+# ---------------------------------------------------------------------------
+# The batch manifest must itself be verifiable
+#
+# Red-team found the sealed manifest failed the standalone verifier: it carried
+# no provenance block, so the coherence checks (V6) had nothing to inspect. A
+# sealed artifact that the verifier rejects is worse than an unsealed one -- the
+# analyst is told their own export is broken.
+# ---------------------------------------------------------------------------
+
+def test_batch_manifest_carries_provenance_and_verifies(tmp_path):
+    import shutil as _shutil
+    import subprocess as _sp
+    import sys as _sys
+
+    from siberian.batch import run_batch
+
+    src = tmp_path / "A.EXE-00000000.pf"
+    src.write_bytes(b"MAM\x04" + b"\x00" * 300)
+    out_dir = tmp_path / "out"
+    result = run_batch("prefetch", [src], out_dir)
+
+    manifest = json.loads(Path(result.manifest_path).read_text())
+    assert manifest["kind"] == "siberian-batch-manifest"
+    prov = manifest["provenance"]
+    assert prov["parser"]["name"] == "siberian.prefetch_parser"
+    assert prov["parser"]["version"]
+    assert prov["transformations"]
+    assert prov["limitations"]
+    # The manifest's sources are the batch inputs: it doubles as the custody index.
+    assert len(prov["sources"]) == 1
+    assert prov["sources"][0]["sha256"]
+
+    # And it verifies with siberian absent.
+    workspace = tmp_path / "iso"
+    workspace.mkdir()
+    _shutil.copy2(result.manifest_path, workspace / "batch-manifest.json")
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(workspace), "PYTHONPATH": ""}
+    outcome = _sp.run(
+        [_sys.executable, str(VERIFIER), "batch-manifest.json"],
+        cwd=workspace, capture_output=True, text=True, env=env, timeout=60,
+    )
+    assert outcome.returncode == 0, outcome.stdout + outcome.stderr
+    assert "VERIFIED" in outcome.stdout
+
+
+def test_every_written_batch_artifact_verifies(tmp_path):
+    """No sealed artifact the batch writes may fail its own verifier."""
+    import shutil as _shutil
+    import subprocess as _sp
+    import sys as _sys
+
+    from siberian.batch import run_batch
+
+    src = tmp_path / "A.EXE-00000000.pf"
+    src.write_bytes(b"MAM\x04" + b"\x00" * 300)
+    out_dir = tmp_path / "out"
+    result = run_batch("prefetch", [src], out_dir)
+
+    workspace = tmp_path / "iso"
+    workspace.mkdir()
+    produced = list(out_dir.glob("*.json"))
+    assert produced, "the batch wrote nothing to verify"
+    for path in produced:
+        _shutil.copy2(path, workspace / path.name)
+
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(workspace), "PYTHONPATH": ""}
+    outcome = _sp.run(
+        [_sys.executable, str(VERIFIER), *[p.name for p in workspace.glob("*.json")],
+         "--json"],
+        cwd=workspace, capture_output=True, text=True, env=env, timeout=60,
+    )
+    payload = json.loads(outcome.stdout[outcome.stdout.index("{"):])
+    for doc in payload["documents"]:
+        integrity_failures = [
+            c["code"] for c in doc["checks"]
+            if not c["passed"] and c["code"] in {"V1", "V2", "V3", "V4", "V5"}
+        ]
+        assert not integrity_failures, (
+            f"{doc['path']} failed integrity checks: {integrity_failures}"
         )

@@ -33,6 +33,7 @@ Reimplemented here from the specification, not copied from the producer:
         float       -> "nan" | "inf" | "-inf" | f"{obj + 0.0:.8f}"
         str         -> "s:" + NFC(obj.replace("\\r\\n","\\n").replace("\\r","\\n"))
         None        -> "null"
+        Fraction    -> f"{num}/{den}:frac"
         dict        -> {k: canonicalize(v) for k, v in sorted(obj.items())}
         list/tuple  -> [canonicalize(v) for v in obj]
         anything else -> TypeError
@@ -50,7 +51,7 @@ Reimplemented here from the specification, not copied from the producer:
     )
 
 The string prefix "s:" and the ":int" / ":frac" suffixes exist so that a boolean,
-an integer and a string can never canonicalize to the same bytes.
+an integer, a string and a rational can never canonicalize to the same bytes.
 
 WHAT IS CHECKED
     V1  document kind and versions are recognised
@@ -89,6 +90,7 @@ import hashlib
 import json
 import sys
 import unicodedata
+from fractions import Fraction
 from typing import Any, Dict, List, Optional, Tuple
 
 VERIFIER_VERSION = "1.0"
@@ -129,6 +131,12 @@ def canonicalize(obj: Any) -> Any:
         return "s:" + _norm_str(obj)
     if obj is None:
         return "null"
+    if isinstance(obj, Fraction):
+        # Present in the protocol and therefore required here. An earlier
+        # revision of this verifier omitted it, which meant it implemented a
+        # strict subset of canonicalization v2: agreement with the producer was
+        # untested on this type and would have failed as a false negative.
+        return f"{obj.numerator}/{obj.denominator}:frac"
     if isinstance(obj, dict):
         return {k: canonicalize(v) for k, v in sorted(obj.items())}
     if isinstance(obj, (list, tuple)):

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 from siberian.batch import (
     ADAPTERS,
     BatchError,
@@ -511,3 +513,81 @@ def test_report_cap_cannot_hide_problems(tmp_path):
     listed = [l.strip() for l in report.splitlines() if l.strip().startswith("[")]
     problems = [l for l in listed if "PARTIAL" in l or "FAILED" in l]
     assert len(problems) == 3, "the cap must be spent on problems first"
+
+
+# ---------------------------------------------------------------------------
+# Red-team findings on the batch runner itself
+# ---------------------------------------------------------------------------
+
+def test_crash_details_do_not_leak_analyst_paths_into_the_sealed_manifest(tmp_path):
+    """Regression: tracebacks were stored in the sealed manifest.
+
+    The manifest is sealed and handed to third parties, and traceback frames
+    carry the analyst's install paths and code layout. That is environment
+    detail, not evidence provenance, and once sealed it cannot be scrubbed
+    without breaking the seal. The exception type and message are kept; the
+    frames go to stderr.
+    """
+    from siberian.batch import ADAPTERS, BatchAdapter, _mft_run
+
+    def boom(source, limits):
+        if "boom" in Path(source).name:
+            raise RuntimeError("simulated adapter crash")
+        return _mft_run(source, limits)
+
+    src = tmp_path / "boom.mft"
+    _good_mft(src)
+    original = ADAPTERS["mft"]
+    ADAPTERS["mft"] = BatchAdapter("mft", original.spec, boom)
+    try:
+        result = run_batch("mft", [src], tmp_path / "out")
+    finally:
+        ADAPTERS["mft"] = original
+
+    outcome = result.outcomes[0]
+    assert outcome.status == "failed"
+    # The diagnostic value survives.
+    assert "RuntimeError" in outcome.detail
+    assert "simulated adapter crash" in outcome.detail
+    assert outcome.item_stats.get("exception_type") == "RuntimeError"
+    # The frames do not.
+    manifest_text = Path(result.manifest_path).read_text()
+    assert "Traceback (most recent call last)" not in manifest_text
+    assert str(REPO_ROOT) not in manifest_text
+
+
+def test_run_batch_has_no_dead_allow_partial_parameter():
+    """Regression: run_batch accepted allow_partial and ignored it.
+
+    An ignored knob misleads any caller using the module directly into thinking
+    it controls the outcome. Whether a partial result is acceptable belongs to
+    the caller, which owns the exit code.
+    """
+    import inspect
+
+    from siberian.batch import run_batch
+
+    assert "allow_partial" not in inspect.signature(run_batch).parameters
+
+
+def test_crash_is_still_isolated_and_recorded(tmp_path):
+    """The leak fix must not have cost the diagnostic."""
+    from siberian.batch import ADAPTERS, BatchAdapter, _mft_run
+
+    def boom(source, limits):
+        if Path(source).name.startswith("bad"):
+            raise RuntimeError("kaboom")
+        return _mft_run(source, limits)
+
+    good = _good_mft(tmp_path / "good.mft")
+    bad = _good_mft(tmp_path / "bad.mft")
+    original = ADAPTERS["mft"]
+    ADAPTERS["mft"] = BatchAdapter("mft", original.spec, boom)
+    try:
+        result = run_batch("mft", [bad, good], tmp_path / "out")
+    finally:
+        ADAPTERS["mft"] = original
+
+    statuses = {Path(o.source).name: o.status for o in result.outcomes}
+    assert statuses["bad.mft"] == "failed"
+    assert statuses["good.mft"] == "ok", "a sibling crash must not contaminate"

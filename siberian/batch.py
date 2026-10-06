@@ -442,13 +442,17 @@ def run_batch(
     limits: Optional[BatchLimits] = None,
     pattern: str = "*",
     recursive: bool = False,
-    allow_partial: bool = False,
     manifest_name: str = "batch-manifest.json",
 ) -> BatchResult:
     """Run one adapter over many inputs, one output per input.
 
     Raises BatchError if an invariant would be violated. Individual input
     failures are recorded, not raised.
+
+    Note there is deliberately no ``allow_partial`` knob here. Whether a partial
+    result is acceptable is the caller's decision, and it is the caller that owns
+    the exit code; an earlier revision accepted the argument and ignored it,
+    which would have misled anyone calling this directly.
     """
     adapter = get_adapter(adapter_name)
     limits = limits or BatchLimits()
@@ -497,10 +501,42 @@ def run_batch(
 
     # The manifest is the batch's citable artifact, so it is sealed too: it is
     # what ties every per-input output to the run that produced it.
+    #
+    # It also carries provenance. Without it the sealed manifest could not be
+    # verified at all (the verifier's coherence checks require a provenance
+    # block), and the batch's index would not say which parser version produced
+    # it or what that parser cannot do -- which is the whole point of sealing a
+    # manifest. Its `sources` list is one entry per input, so the manifest
+    # doubles as the chain-of-custody index for the run.
+    manifest_provenance = {
+        "provenance_version": PROVENANCE_VERSION,
+        "parser": {
+            "name": adapter.spec.name,
+            "version": adapter.spec.version,
+            "supports": list(adapter.spec.supports),
+            "determinism_level": adapter.spec.determinism_level,
+            "requires": adapter.spec.requires,
+        },
+        "transformations": list(adapter.spec.transformations),
+        "limitations": list(adapter.spec.limitations),
+        "sources": [
+            {
+                "label": "batch-input",
+                "path": outcome.source,
+                "sha256": outcome.source_digest,
+                "status": outcome.status,
+            }
+            for outcome in result.outcomes
+            if outcome.output is not None
+        ],
+    }
+    manifest = dict(result.to_dict())
+    manifest["provenance"] = manifest_provenance
+
     manifest_path = out_dir / manifest_name
     manifest_path.write_text(
         json.dumps(
-            seal_export(result.to_dict(), kind=MANIFEST_KIND),
+            seal_export(manifest, kind=MANIFEST_KIND),
             ensure_ascii=False, indent=2, sort_keys=True,
         ),
         encoding="utf-8",
@@ -539,10 +575,22 @@ def _process_one(
     try:
         payload, status, detail, item_stats = adapter.run(source, limits)
     except Exception as exc:
+        # The full traceback goes to stderr, where the analyst needs it. It is
+        # deliberately NOT stored in the manifest: the manifest is sealed and
+        # shared with third parties, and traceback frames carry the analyst's
+        # install paths and code layout. That is environment detail, not
+        # evidence provenance, and once sealed it cannot be scrubbed without
+        # breaking the seal. The exception type and message carry the diagnostic
+        # value a consumer needs.
+        print(
+            f"siberian: adapter crashed on {source}:\n"
+            + traceback.format_exc(),
+            file=sys.stderr,
+        )
         return InputOutcome(
             source=str(source), output=None, status="failed",
             detail=f"{type(exc).__name__}: {exc}", source_digest=digest,
-            item_stats={"traceback": traceback.format_exc(limit=3)},
+            item_stats={"exception_type": type(exc).__name__},
         )
 
     try:

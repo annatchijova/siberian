@@ -118,22 +118,43 @@ pip install -e '.[adapters]'   # python-registry, pyscca
 
 ---
 
-## Blocked by Windows VM (Empirical Validation)
+## What Is Blocked, And By What
 
-The following **cannot be completed without a Windows VM** because they require empirical observation of artifact behavior on actual Windows systems:
+An important distinction: **almost nothing here needs Windows to run.** The core
+library and all five artifact parsers are stdlib-only and platform-independent.
+An `$MFT`, a `SYSTEM` hive and an `Amcache.hve` are byte streams; parsing them
+on Linux is routine. The Prefetch parser has already been validated against 225
+**real Windows 10** artifacts from the OWL 2019 disk image while running on
+Linux.
 
-| Work Item | Why Windows Required |
-|-----------|---------------------|
-| **Level 1 catalog validation** — confirm artifact generation, retention limits, rollover behavior, audit policy effects on actual Windows 10/11 builds | Artifact generation depends on OS build, edition, audit policy, and configuration — only observable on real Windows |
-| **Level 4 calibration corpus** — controlled ground-truth cases (benign + selective deletion) with known ground truth | Requires executing attacker techniques and measuring artifact survival on real Windows |
-| **Level 6 additional adapters** — EVTX, USN, Jump Lists, LNK, and consolidation of the existing MFT/Prefetch/Amcache/Shimcache/Shellbags parsers | Format specifics, edge cases, and Windows version differences only observable on real Windows |
-| **Collector validation** — `lab/collect_windows_baseline.ps1` syntax and runtime behavior on PowerShell 5.1 | PowerShell 5.1 behavior differs from 7+; only verifiable on Windows |
+What is blocked is **empirical validation**, and the two blockers are not the
+same thing:
+
+### Needs a live Windows system (cannot be done on Linux at all)
+
+| Work item | Why a running Windows is required |
+|-----------|------------------------------------|
+| **Level 1 catalog validation** — confirm artifact generation, retention limits, rollover behaviour, audit-policy effects | These are properties of a *running* OS under a *configuration*. Nothing observes them from a parsed file, because the file cannot tell you what would have been in it |
+| **Level 4 calibration corpus** — controlled ground-truth cases with selective deletion | Requires executing techniques and measuring artifact survival over time |
+| **Collector validation** — `lab/collect_windows_baseline.ps1` on PowerShell 5.1 | PowerShell 5.1 behaviour differs from 7+; only verifiable on Windows |
+
+### Needs a real artifact sample (Windows OS not required — only the file)
+
+| Work item | What is actually missing |
+|-----------|--------------------------|
+| **MFT validation** | A genuine `$MFT` from an acquired volume. The parser runs on Linux; it has only ever been tested on synthetic records |
+| **Amcache validation** | A genuine `Amcache.hve`. Neither `python-registry` nor `regipy` can author one, so no fixture could be synthesised |
+| **Shimcache / Shellbags validation** | A genuine `SYSTEM`, `NTUSER.DAT` or `UsrClass.dat`. Traversal is covered only by a stub of the `python-registry` interface |
+| **Prefetch SCCA** | A Windows XP-8.1 prefetch file. The MAM path (Win10+) is validated; SCCA is delegated to libscca and unverified because no sample exists locally |
+
+An artifact copied off a Windows volume is sufficient for every item in the
+second table. No Windows licence, VM or dual boot is needed — only the file.
 
 **What CAN proceed without Windows:**
 - Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
 - Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
 - Red-team audits, deterministic testing, documentation
-- All 284 unit tests pass without Windows
+- All 316 unit tests pass on Linux, with no Windows and no evidence
 
 ---
 
@@ -201,6 +222,7 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 - `docs/red-team/NIVEL6_AMCACHE_AUDIT.md` — Amcache parser (9 findings; arbitrary bytes were being rendered as year-3204 dates)
 - `docs/red-team/NIVEL6_SHIMCACHE_AUDIT.md` — Shimcache parser (7 findings; 2 hypotheses refuted by experiment)
 - `docs/red-team/NIVEL6_SHELLBAGS_AUDIT.md` — Shellbags parser (9 findings; produced the fabricated path `C:\Users\Bob\Deskto`)
+- `docs/red-team/NIVEL6_INFRA_AUDIT.md` — sealing, batch and the independent verifier (5 findings; the verifier implemented a subset of the hash protocol it claimed to implement, and the sealed batch manifest could not be verified at all)
 - `docs/EXPORT_VERIFICATION.md` — how to verify an export without SIBERIAN, and what verification does not prove
 
 > A green suite is not the same as a correct parser. Across these five parsers,
@@ -225,12 +247,13 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 ## Project Status
 
 - **License:** Apache-2.0
-- **Tests:** 284 passing (deterministic, no Windows required)
+- **Tests:** 316 passing on Linux (deterministic, no Windows required)
 - **Red-team audits:** Level 3 complete, Level 6 complete (all five shipped adapters), Level 5 pending
 - **Artifact parsers shipped:** Plaso l2tcsv (imports into case file), MFT, Prefetch, Amcache, Shimcache, Shellbags (summary/JSON only — see caveat)
 - **Provenance:** every adapter records the source digest (a sorted manifest digest for directories), the parser name and version, its ordered transformations, and its declared limitations
 - **Batch (`siberian batch`):** runs one adapter over many artifacts, one output file per artifact plus a manifest. It refuses to start rather than mix sources or overwrite another case's export, isolates each input's failure, and discloses any limit that truncated the run
 - **Independent verification:** every export is sealed (`provenance_hash`, `payload_hash`, `export_hash`). `forensics/verify_siberian.py` re-derives them from the documented protocol alone — one stdlib-only file that imports nothing from SIBERIAN, so an analyst can verify evidence without trusting the tool that produced it. See [docs/EXPORT_VERIFICATION.md](docs/EXPORT_VERIFICATION.md)
-- **Windows validation:** Pending VM access; no parser has been validated against a real artifact
+- **Platform:** Linux-native and stdlib-only. Validated against real Windows artifacts (225 prefetch files from the OWL 2019 image) without a Windows host
+- **Outstanding validation:** no MFT, Amcache, Shimcache or Shellbags parser has run against a real artifact; SCCA prefetch is unverified. See "What Is Blocked, And By What"
 
 > Evidence is not only what remains.

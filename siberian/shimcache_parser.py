@@ -7,9 +7,21 @@ Shimcache is stored in the Windows Registry at:
     HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\AppCompatCache
 
 The AppCompatCache value is REG_BINARY. The exact format varies by Windows
-version. This parser handles Windows 10+ format heuristically:
-- Each entry starts with a 4-byte little-endian size
-- Entry contains a path (UTF-16-LE) and a last-modified timestamp
+version.
+
+It does **not** decode the documented shimcache record layout. It performs a
+heuristic scan: it looks for a 4-byte length, then searches the surrounding
+bytes for a UTF-16-LE path string, and reports that path. A timestamp is only
+reported when an 8-byte window in that region decodes to a FILETIME between
+2010 and 2030.
+
+Every entry carries ``parse_method`` so a heuristic recovery is never mistaken
+for a decoded record ("length-scan" or "path-scan"). ``flags`` is never
+populated: a constant 0 would be indistinguishable from a real zero flag.
+
+Validation status: **no SYSTEM hive exists in this workspace**, so neither the
+record layout nor the registry value name is confirmed against real evidence.
+See docs/red-team/NIVEL6_SHIMCACHE_AUDIT.md.
 
 Design constraints:
 - No external dependencies (stdlib only)
@@ -29,14 +41,34 @@ from typing import Any, Dict, List, Optional, Tuple
 _FILETIME_EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
 
 
+# Value names this parser will accept for the AppCompatCache data. Windows
+# versions are not consistent about the spelling, so both are tried and the one
+# that matched is recorded. Widening a name match cannot fabricate structure.
+CACHE_VALUE_NAMES = ("AppCompatCache", "AppCompatibilityCache")
+
+
 @dataclass
 class ShimcacheEntry:
-    """Parsed AppCompatCache entry."""
+    """One heuristically recovered AppCompatCache path.
+
+    ``parse_method`` records how the entry was obtained, so a heuristic
+    recovery is never presented as a decoded record.
+    """
+
     path: str
     last_modified: Optional[datetime] = None
-    flags: int = 0
+    # Never populated by this parser. Present only so the absence is explicit
+    # rather than defaulted to a plausible-looking 0.
+    flags: Optional[int] = None
     entry_size: int = 0
     raw_offset: int = 0
+    parse_method: str = "length-scan"
+    # Provenance of the containing registry value, when known.
+    control_set: Optional[str] = None
+    value_name: Optional[str] = None
+    # Set when the value was located only by being binary, i.e. its name was not
+    # one this parser recognises.
+    degraded: Optional[str] = None
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -46,6 +78,10 @@ class ShimcacheEntry:
             "flags": self.flags,
             "entry_size": self.entry_size,
             "raw_offset": self.raw_offset,
+            "parse_method": self.parse_method,
+            "control_set": self.control_set,
+            "value_name": self.value_name,
+            "degraded": self.degraded,
             "error": self.error,
         }
 
@@ -168,77 +204,154 @@ def parse_shimcache_binary(data: bytes) -> List[ShimcacheEntry]:
                 path=path,
                 raw_offset=offset_in_data,
                 entry_size=0,
+                parse_method="path-scan",
             ))
 
     return entries if entries else [ShimcacheEntry(path="", error="No entries parsed - format may be unsupported for this Windows version")]
 
 
 def parse_shimcache_from_registry(hive_path: Path) -> List[ShimcacheEntry]:
-    """
-    Parse Shimcache from SYSTEM Registry hive.
-    
-    Args:
-        hive_path: Path to SYSTEM hive file
-    
-    Returns:
-        List of ShimcacheEntry objects
+    """Locate and heuristically parse the AppCompatCache value in a SYSTEM hive.
+
+    The lookup accepts either known value name and records which one matched.
+    When nothing is found, the error names the control sets and Session Manager
+    value names that were actually present, so a failed lookup is diagnosable
+    instead of indistinguishable from a hive that never had shimcache.
     """
     try:
         from Registry import Registry
     except ImportError:
-        return [ShimcacheEntry(path="", error="python-registry not installed: pip install python-registry")]
+        return [ShimcacheEntry(
+            path="",
+            error="python-registry not installed: pip install python-registry",
+            degraded="registry parsing unavailable",
+        )]
 
     try:
-        reg = Registry.Registry(str(hive_path))
-    except Exception as e:
-        return [ShimcacheEntry(path="", error=f"Cannot open hive: {e}")]
+        hive = Registry.Registry(str(hive_path))
+    except Exception as exc:
+        return [ShimcacheEntry(path="", error=f"Cannot open hive: {exc}")]
 
     try:
-        # Navigate to: ControlSet001 -> Control -> Session Manager -> AppCompatCache
-        # Or CurrentControlSet -> Control -> Session Manager -> AppCompatCache
-        root = reg.root()
-        target_key = None
+        root = hive.root()
+    except Exception as exc:
+        return [ShimcacheEntry(path="", error=f"Cannot read hive root: {exc}")]
 
-        for control_set in root.subkeys():
-            cs_name = control_set.name()
-            if not cs_name.startswith("ControlSet") and cs_name != "CurrentControlSet":
-                continue
+    control_sets = []
+    seen_value_names: List[str] = []
+    reached_session_manager = False
+
+    for control_set in _safe(root.subkeys):
+        cs_name = control_set.name()
+        if not (cs_name.startswith("ControlSet") or cs_name == "CurrentControlSet"):
+            continue
+        control_sets.append(cs_name)
+
+        session_manager = _safe_subkey(control_set, "Control\\Session Manager")
+        if session_manager is None:
+            continue
+        reached_session_manager = True
+
+        # Record what is actually present, for the failure message.
+        for value in _safe(session_manager.values):
             try:
-                session_manager = control_set.subkey("Control\\Session Manager")
-                if session_manager is None:
-                    session_manager = control_set.subkey("Control\\Session Manager\\AppCompatCache")
-                if session_manager:
-                    try:
-                        appcompat_cache_key = session_manager.subkey("AppCompatCache")
-                        if appcompat_cache_key is None:
-                            # AppCompatCache might be a value in Session Manager directly
-                            for value in session_manager.values():
-                                if value.name() == "AppCompatCache":
-                                    data = value.value()
-                                    if isinstance(data, bytes):
-                                        return parse_shimcache_binary(data)
-                        else:
-                            for value in appcompat_cache_key.values():
-                                if value.name() == "AppCompatCache" or isinstance(value.value(), bytes):
-                                    data = value.value()
-                                    if isinstance(data, bytes):
-                                        return parse_shimcache_binary(data)
-                    except Exception:
-                        pass
+                seen_value_names.append(value.name())
             except Exception:
-                pass
+                continue
+        if _safe_subkey(session_manager, "AppCompatCache") is not None:
+            for value in _safe(_safe_subkey(session_manager, "AppCompatCache").values):
+                try:
+                    seen_value_names.append(
+                        f"AppCompatCache\\{value.name()}"
+                    )
+                except Exception:
+                    continue
 
-        return [ShimcacheEntry(path="", error="AppCompatCache key not found in SYSTEM hive")]
-    except Exception as e:
-        return [ShimcacheEntry(path="", error=f"Error parsing SYSTEM hive: {e}")]
+        # Case A: the data is a value directly on Session Manager.
+        for value in _safe(session_manager.values):
+            try:
+                name = value.name()
+                data = value.value()
+            except Exception:
+                continue
+            if name in CACHE_VALUE_NAMES and isinstance(data, bytes):
+                return _tag(parse_shimcache_binary(data), cs_name, name)
+
+        # Case B: an AppCompatCache subkey holds the value.
+        cache_key = _safe_subkey(session_manager, "AppCompatCache")
+        if cache_key is not None:
+            for value in _safe(cache_key.values):
+                try:
+                    name = value.name()
+                    data = value.value()
+                except Exception:
+                    continue
+                if not isinstance(data, bytes):
+                    continue
+                if name in CACHE_VALUE_NAMES:
+                    return _tag(parse_shimcache_binary(data), cs_name, name)
+
+    # Nothing matched. Say what was looked at, so this is diagnosable.
+    detail = f"control sets seen: {', '.join(control_sets) or 'none'}"
+    if seen_value_names:
+        detail += f"; values present: {', '.join(sorted(set(seen_value_names)))}"
+    elif reached_session_manager:
+        detail += "; Session Manager holds no values"
+    else:
+        detail += "; Session Manager not reachable"
+    return [ShimcacheEntry(
+        path="",
+        error=(
+            "AppCompatCache value not found. Looked for "
+            f"{' and '.join(CACHE_VALUE_NAMES)} under "
+            "ControlSet\\Control\\Session Manager. " + detail
+        ),
+    )]
+
+
+def _tag(entries: List[ShimcacheEntry], control_set: str, value_name: str) -> List[ShimcacheEntry]:
+    """Attach provenance to every entry recovered from one registry value."""
+    for entry in entries:
+        entry.control_set = control_set
+        entry.value_name = value_name
+    return entries
+
+
+def _safe(getter):
+    """Call a python-registry accessor, returning an empty list on failure.
+
+    Navigation errors must not be silently swallowed and then reported as
+    "not found"; they surface as an empty listing that the failure message
+    makes explicit.
+    """
+    try:
+        return list(getter())
+    except Exception:
+        return []
+
+
+def _safe_subkey(key, path: str):
+    try:
+        return key.subkey(path)
+    except Exception:
+        return None
 
 
 def format_shimcache_summary(entry: ShimcacheEntry) -> str:
-    """Format one entry as a human-readable summary line."""
+    """Format one entry as a single terminal line.
+
+    The recovery method is always shown: a path found by scanning a blob is not
+    the same claim as a decoded record, and the terminal line is where an
+    analyst will read it.
+    """
     if entry.error:
         return f"ERROR: {entry.error}"
-    modified = entry.last_modified.isoformat() if entry.last_modified else "unknown"
-    return f"{entry.path:60s} | last modified: {modified} | size: {entry.entry_size}"
+    modified = entry.last_modified.isoformat() if entry.last_modified else "not recovered"
+    source = entry.value_name or entry.control_set or "?"
+    return (
+        f"{entry.path:56s} | last_modified: {modified:32s} "
+        f"| via: {entry.parse_method:12s} | source: {source}"
+    )
 
 
 if __name__ == "__main__":

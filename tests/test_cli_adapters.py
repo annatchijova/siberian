@@ -199,3 +199,22 @@ def test_case_file_positional_only_where_consumed(command, expect_case_file):
     assert ("case_file" in positionals) is expect_case_file, (
         f"{command}: positionals={positionals}"
     )
+
+
+def test_shimcache_failure_is_not_counted_as_a_parsed_entry(tmp_path, capsys):
+    """Regression: the count line reported 'Parsed 1 entries' for a missing hive.
+
+    The synthetic error entry was included in the tally, so a total failure
+    looked like a one-entry success.
+    """
+    rc = cli._cmd_import_shimcache(_ns(system_hive=tmp_path / "SYSTEM"))
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "Parsed 0 Shimcache entries" in out
+
+
+def test_shellbags_failure_is_not_counted_as_a_parsed_entry(tmp_path, capsys):
+    rc = cli._cmd_import_shellbags(_ns(hive_path=tmp_path / "NTUSER.DAT"))
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "Parsed 0 Shellbag entries" in out

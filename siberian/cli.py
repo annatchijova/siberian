@@ -478,7 +478,8 @@ def _cmd_import_shellbags(args) -> int:
     """Parse Shellbags from a registry hive."""
     try:
         entries = parse_shellbags_from_registry(args.hive_path, bag_type=args.bag_type)
-        print(f"Parsed {len(entries)} Shellbag entries from {args.hive_path} ({args.bag_type})")
+        parsed = [e for e in entries if not e.error]
+        print(f"Parsed {len(parsed)} Shellbag entries from {args.hive_path} ({args.bag_type})")
 
         if args.summary:
             for entry in entries[:args.max_entries or 100]:
@@ -520,7 +521,8 @@ def _cmd_import_shimcache(args) -> int:
     """Parse AppCompatCache (Shimcache) from SYSTEM hive."""
     try:
         entries = parse_shimcache_from_registry(args.system_hive)
-        print(f"Parsed {len(entries)} Shimcache entries from {args.system_hive}")
+        parsed = [e for e in entries if not e.error]
+        print(f"Parsed {len(parsed)} Shimcache entries from {args.system_hive}")
 
         if args.summary:
             for entry in entries[:args.max_entries or 100]:

@@ -104,9 +104,9 @@ The VIGÍA detector is a research starting point, not a validated standalone pro
 | **3** | Rival hypotheses & counterfactuals (`rivals` CLI) | ✅ Complete | — |
 | **4** | Empirical evaluation & calibration (blind corpus) | ⏳ Planned | **Windows VM** — controlled corpus with ground truth |
 | **5** | Sealed bundle + standalone verifier (`seal`/`verify`) | ✅ Complete | — |
-| **6** | Forensic tool adapters (Plaso → case file) | 🟡 Partial | **Windows VM** — additional format adapters (EVTX, MFT, USN, Registry, etc.) |
+| **6** | Forensic tool adapters (Plaso → case file) | 🟡 Partial | **Windows VM** — additional format adapters (EVTX, USN, etc.) and real-fixture validation of the ones shipped |
 
-**What "✅ Complete" means:** implemented, tested (42 tests pass), red-team audited, deterministic, and documented.
+**What "✅ Complete" means:** implemented, tested, red-team audited, deterministic, and documented.
 
 **What "⏳ Planned" means:** design documented, awaiting blocker resolution.
 
@@ -120,14 +120,14 @@ The following **cannot be completed without a Windows VM** because they require 
 |-----------|---------------------|
 | **Level 1 catalog validation** — confirm artifact generation, retention limits, rollover behavior, audit policy effects on actual Windows 10/11 builds | Artifact generation depends on OS build, edition, audit policy, and configuration — only observable on real Windows |
 | **Level 4 calibration corpus** — controlled ground-truth cases (benign + selective deletion) with known ground truth | Requires executing attacker techniques and measuring artifact survival on real Windows |
-| **Level 6 additional adapters** — EVTX, MFT, USN, Registry, Prefetch, Amcache, Shimcache parsers | Format specifics, edge cases, and Windows version differences only observable on real Windows |
+| **Level 6 additional adapters** — EVTX, USN, Jump Lists, LNK, and consolidation of the existing MFT/Prefetch/Amcache/Shimcache/Shellbags parsers | Format specifics, edge cases, and Windows version differences only observable on real Windows |
 | **Collector validation** — `lab/collect_windows_baseline.ps1` syntax and runtime behavior on PowerShell 5.1 | PowerShell 5.1 behavior differs from 7+; only verifiable on Windows |
 
 **What CAN proceed without Windows:**
 - Core library, CLI, bundle sealing/verification, rival hypotheses, Plaso import adapter
 - Catalog matrix review against Microsoft documentation (docs/CATALOG_MATRIX.md)
 - Red-team audits, deterministic testing, documentation
-- All 42 existing unit tests pass without Windows
+- All 89 unit tests pass without Windows
 
 ---
 
@@ -155,6 +155,13 @@ python3 -m siberian.verify bundle.json --strict
 # Import Plaso l2tcsv as UNKNOWN observations
 siberian import-plaso template.json plaso.csv -o enriched.json
 
+# Artifact parsers (summary/JSON — these do NOT modify a case file)
+siberian import-mft $MFT --summary
+siberian import-prefetch /mnt/evidence/Prefetch --summary
+siberian import-amcache Amcache.hve --summary
+siberian import-shimcache SYSTEM --summary
+siberian import-shellbags NTUSER.DAT --bag-type BagMRU --summary
+
 # Evaluate rival hypotheses
 siberian rivals case.json
 ```
@@ -167,14 +174,21 @@ All levels undergo red-team audit before merge. Reports in `docs/red-team/`:
 
 - `docs/red-team/NIVEL3_AUDIT.md` — Rival hypotheses & counterfactuals (9 findings, all fixed)
 - `docs/red-team/NIVEL5_AUDIT.md` — Bundle sealing & verification (pending)
+- `docs/red-team/NIVEL6_MFT_AUDIT.md` — MFT parser (7 findings: 1 critical, 2 high, 2 medium, 2 low/info; all fixed, 2 claims refuted and withdrawn)
+
+> A green suite is not the same as a correct parser. The MFT parser shipped with
+> six passing tests while reporting the file's **creation** time as its
+> modification time, because the fixture's timestamps were all zero. Read the
+> audit, not the test count.
 
 ---
 
 ## Project Status
 
 - **License:** Apache-2.0
-- **Tests:** 42 passing (deterministic, no Windows required)
-- **Red-team audits:** Level 3 complete, Level 5 pending
-- **Windows validation:** Pending VM access
+- **Tests:** 89 passing (deterministic, no Windows required)
+- **Red-team audits:** Level 3 complete, Level 6 (MFT) complete, Level 5 pending
+- **Artifact parsers shipped:** Plaso l2tcsv (imports into case file), MFT, Prefetch, Amcache, Shimcache, Shellbags (summary/JSON only — see caveat)
+- **Windows validation:** Pending VM access; no parser has been validated against a real artifact
 
 > Evidence is not only what remains.

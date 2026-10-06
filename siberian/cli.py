@@ -40,6 +40,23 @@ def main(argv: list[str] | None = None) -> int:
         description="Review declared forensic evidence gaps; does not infer deletion or intent.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
+
+    # Only these commands consume a case file. The standalone artifact parsers
+    # (import-mft, import-prefetch, import-amcache, import-shimcache,
+    # import-shellbags) read their own target path and emit summary/JSON only;
+    # adding "case_file" to them forced a spurious unused positional argument.
+    case_file_commands = frozenset(
+        {
+            "validate",
+            "analyze",
+            "explain",
+            "seal",
+            "verify",
+            "import-plaso",
+            "rivals",
+        }
+    )
+
     for command, help_text in (
         ("validate", "validate a case file without producing a report"),
         ("analyze", "produce a deterministic JSON evidence matrix"),
@@ -55,7 +72,8 @@ def main(argv: list[str] | None = None) -> int:
         ("rivals", "evaluate rival hypotheses against analysis result"),
     ):
         subparser = commands.add_parser(command, help=help_text)
-        subparser.add_argument("case_file", type=Path, help="analyst-authored JSON case file")
+        if command in case_file_commands:
+            subparser.add_argument("case_file", type=Path, help="analyst-authored JSON case file")
 
     # import-shellbags specific options
     import_shellbags_parser = commands.choices["import-shellbags"]

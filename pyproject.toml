@@ -30,9 +30,14 @@ adapters = [
     "python-registry>=1.5.0",
     "pyscca>=20221011",
 ]
+# siberian/mcp_server.py only: a curated read-only MCP bridge over 6 of
+# the CLI's analysis subcommands, invoked as subprocesses. Not part of
+# the stdlib-only core.
+mcp = ["mcp>=1.0"]
 
 [project.scripts]
 siberian = "siberian.cli:main"
+siberian-mcp = "siberian.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["siberian*"]
